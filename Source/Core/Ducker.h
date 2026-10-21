@@ -23,10 +23,11 @@ private:
     double wrapLoop(double ppq) const noexcept;
     double sampleRate=48000, step=0, blockPpq=0, expectedPpq=0, lastPhase=0, lastGain=1;
     double amount=0, amountTarget=0, amountStep=0, transitionFrom=1;
+    double previousPpq=0, edgeBpm=120, edgeBpmTarget=120, edgeBpmStep=0;
     std::array<double,4> shapes{}, shapeTargets{}, shapeSteps{};
     std::array<double,6> rates{}, rateTargets{}, rateSteps{};
     Transport transport;
-    int offset=0, rampLeft=0, rampLength=240, transitionLeft=0, transitionLength=96, selectedRate=1;
-    bool initialized=false, active=false, loopEnabled=false;
+    int offset=0, rampLeft=0, rampLength=240, transitionLeft=0, transitionLength=96, edgeRampLeft=0, selectedRate=1;
+    bool initialized=false, active=false, loopEnabled=false, renderedActive=false;
 };
 }

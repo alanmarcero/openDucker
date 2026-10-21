@@ -1,6 +1,7 @@
 #include "Ducker.h"
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace duck {
 namespace {
@@ -29,8 +30,12 @@ void Engine::prepare(double sr) noexcept {
 }
 
 double Engine::wrapLoop(double ppq) const noexcept {
-    if(loopEnabled && ppq>=transport.loopEnd)
+    // Re-anchoring can move an exact boundary by a few floating-point ULPs.
+    const double tolerance=8*std::numeric_limits<double>::epsilon()*std::max(1.0,std::abs(ppq));
+    if(loopEnabled && ppq>=transport.loopEnd-tolerance) {
+        if(ppq<transport.loopEnd) return transport.loopStart;
         return transport.loopStart+std::fmod(ppq-transport.loopStart,transport.loopEnd-transport.loopStart);
+    }
     return ppq;
 }
 
@@ -40,6 +45,12 @@ void Engine::beginBlock(Transport t, Parameters p) noexcept {
     active=t.valid && t.playing && std::isfinite(t.ppq) && std::abs(t.ppq)<1e12
         && std::isfinite(t.bpm) && t.bpm>0 && t.bpm<=10000;
     step=active ? t.bpm/(60*sampleRate) : 0;
+    if(active && (!initialized || !wasActive)) {
+        edgeBpm=edgeBpmTarget=t.bpm; edgeRampLeft=0;
+    } else if(active && t.bpm!=edgeBpmTarget) {
+        edgeBpmTarget=t.bpm; edgeRampLeft=transitionLength;
+        edgeBpmStep=(edgeBpmTarget-edgeBpm)/edgeRampLeft;
+    }
     loopEnabled=active && t.looping && std::isfinite(t.loopStart) && std::isfinite(t.loopEnd)
         && std::abs(t.loopStart)<1e12 && std::abs(t.loopEnd)<1e12 && t.loopEnd>t.loopStart;
     blockPpq=active ? wrapLoop(t.ppq) : 0;
@@ -69,12 +80,19 @@ void Engine::beginBlock(Transport t, Parameters p) noexcept {
 
 double Engine::nextGain() noexcept {
     const double ppq=wrapLoop(blockPpq+static_cast<double>(offset)*step);
+    if(active && renderedActive && loopEnabled && (ppq<previousPpq || step>=transport.loopEnd-transport.loopStart)) {
+        // A loop is only seamless when its length is a whole number of every audible cycle.
+        const double length=transport.loopEnd-transport.loopStart;
+        for(size_t r=0;r<rates.size();++r) if(rates[r]>1e-12 && std::abs(length/cycleBeats[r]-std::round(length/cycleBeats[r]))>1e-9) {
+            transitionFrom=lastGain; transitionLeft=transitionLength; break;
+        }
+    }
     lastPhase=active ? fraction(ppq/cycleBeats[static_cast<size_t>(selectedRate)]) : 0;
     double shaped=0;
     if(active) {
         for(size_t r=0;r<rates.size();++r) if(rates[r]>0) {
             const double phase=fraction(ppq/cycleBeats[r]);
-            const double edge=std::min(0.08,0.003*transport.bpm/(60*cycleBeats[r]));
+            const double edge=std::min(0.08,0.003*edgeBpm/(60*cycleBeats[r]));
             double value=0;
             for(size_t s=0;s<shapes.size();++s) if(shapes[s]>0)
                 value+=shapes[s]*envelope(phase,static_cast<int>(s),edge);
@@ -93,6 +111,11 @@ double Engine::nextGain() noexcept {
         for(size_t i=0;i<rates.size();++i) rates[i]+=rateSteps[i];
         if(--rampLeft==0) {amount=amountTarget; shapes=shapeTargets; rates=rateTargets;}
     }
+    if(edgeRampLeft>0) {
+        edgeBpm+=edgeBpmStep;
+        if(--edgeRampLeft==0) edgeBpm=edgeBpmTarget;
+    }
+    previousPpq=ppq; renderedActive=active;
     ++offset;
     expectedPpq=wrapLoop(blockPpq+static_cast<double>(offset)*step);
     lastGain=std::clamp(gain,0.0,1.0);
