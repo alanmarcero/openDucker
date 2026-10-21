@@ -23,3 +23,16 @@ Review found two transition defects not caught by the initial suite. Both were r
 These tests prove the plugin's behavior against supplied host timing; they do not certify every DAW. No manual commercial-DAW listening session is claimed. Hosts must provide valid PPQ/BPM and report timing changes at audio callback boundaries. The README describes the 2 ms discontinuity transitions and missing-timing behavior.
 
 GitHub Actions rebuilds and validates the release on macOS universal and Windows x64. The release workflow publishes only after all jobs pass. Release-specific results and manager installation evidence are recorded with the release.
+
+## Published release
+
+[v1.0.0](https://github.com/alanmarcero/openDucker/releases/tag/v1.0.0) uses the exact archives from [passing CI run 39624213765](https://github.com/alanmarcero/openDucker/actions/runs/39624213765), source a0e9869ddd6bb3a641f080057878bcc1e077cf93. Both native jobs passed their CTest suites and pluginval level 5. The macOS archive contains arm64 and x86_64 VST3/AU; Windows contains x64 VST3. Archives include project/dependency notices and SOURCE.txt.
+
+The real OpenVST Manager service downloaded both public archives without authentication, verified GitHub-provided SHA-256 digests, installed all three bundles, detected managed v1.0.0 receipts and removed them. macOS signatures and architecture slices were checked after extraction. Windows archive selection and installation were tested on macOS with Windows platform selection; native Windows execution passed in CI. The existing manager UI passed nine tests with the catalog addition.
+
+Checksums:
+
+- macOS: `10833ed12166efbaee2d34df67283034499ddcef260758fda248c3a95b617f0c`
+- Windows: `16eeff48c70b9ad4ba097d0ac2687ff506262a91a718d026b31eff5c0181fc4c`
+
+The [manager catalog update](https://github.com/alanmarcero/alan-m-OpenVSTManager/commit/38362a1) is on main. The real GitHubClient fetched the live public catalog and verified both bundle names after publication.

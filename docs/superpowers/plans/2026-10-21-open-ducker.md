@@ -35,6 +35,6 @@ Missing host timing must never imply sync. Loops crossing buffers must preserve 
 
 - [x] Add README, LICENSE, THIRD_PARTY.md and build/release workflows. Build CI uses pinned JUCE, sanitizers, native tests, pluginval, macOS universal and Windows x64.
 - [x] Review all code with an independent reviewer, fix confirmed findings, rerun relevant checks.
-- [ ] Create public alanmarcero/openDucker, push main, run CI and publish v1.0.0 ZIP assets/checksums after successful checks.
-- [ ] Add exact VST3/AU bundle names to the manager catalog; run manager tests/build and install/remove the released archive in temporary folders.
-- [ ] Push manager catalog update, verify remote contents and report release/source links plus verification limits.
+- [x] Create public alanmarcero/openDucker, push main, run CI and publish v1.0.0 ZIP assets/checksums after successful checks.
+- [x] Add exact VST3/AU bundle names to the manager catalog; run manager tests/build and install/remove the released archive in temporary folders.
+- [x] Push manager catalog update, verify remote contents and report release/source links plus verification limits.
