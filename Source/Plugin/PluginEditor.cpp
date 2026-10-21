@@ -3,7 +3,7 @@
 #include <cmath>
 
 namespace {
-const juce::Colour background{0xff151b20},panel{0xff202a30},mint{0xff8fe2ce},yellow{0xffffcf53},paper{0xfff2f1e8},muted{0xff9eadb5};
+const juce::Colour background{0xff10171b},panel{0xff202a2d},mint{0xff8fd3ce},yellow{0xffd9b878},paper{0xfff2f1e8},muted{0xff9eadb5};
 void text(juce::Graphics& g,const juce::String& value,juce::Rectangle<int> bounds,float size,juce::Colour colour,int alignment=juce::Justification::centredLeft,bool bold=false) {
     g.setColour(colour);g.setFont(juce::FontOptions(size,bold ? juce::Font::bold : juce::Font::plain));
     g.drawText(value,bounds,alignment);
@@ -93,9 +93,16 @@ void DuckLookAndFeel::drawRotarySlider(juce::Graphics& g,int x,int y,int width,i
     arc.addCentredArc(centre.x,centre.y,radius,radius,0,start,start+value*(end-start),true);
     g.setColour(panel.brighter(0.12f));g.strokePath(track,juce::PathStrokeType(6,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
     g.setColour(mint);g.strokePath(arc,juce::PathStrokeType(6,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+    for(int tick=0;tick<=32;++tick) {
+        const float angle=start+static_cast<float>(tick)/32*(end-start);
+        const juce::Point<float> direction{std::sin(angle),-std::cos(angle)};
+        g.setColour(muted.withAlpha(tick%4==0 ? 0.65f : 0.28f));
+        g.drawLine({centre+direction*(radius+9),centre+direction*(radius+(tick%4==0 ? 14 : 12))},1);
+    }
     const auto body=bounds.reduced(13);
     g.setGradientFill(juce::ColourGradient(panel.brighter(0.12f),body.getTopLeft(),background,body.getBottomRight(),false));g.fillEllipse(body);
-    g.setColour(panel.brighter(0.35f));g.drawEllipse(body,1);
+    g.setColour(muted.withAlpha(0.65f));g.drawEllipse(body,1);
+    g.setColour(yellow.withAlpha(0.22f));g.drawEllipse(body.reduced(4),1);
     const float angle=start+value*(end-start);
     const auto a=centre+juce::Point<float>(std::sin(angle),-std::cos(angle))*(radius-22);
     const auto b=centre+juce::Point<float>(std::sin(angle),-std::cos(angle))*(radius-34);
@@ -107,6 +114,7 @@ void DuckLookAndFeel::drawRotarySlider(juce::Graphics& g,int x,int y,int width,i
 DuckerEditor::DuckerEditor(DuckerProcessor& p):AudioProcessorEditor(p),owner(p),effectsPanel(p) {
     setLookAndFeel(&theme);
     mascot=juce::ImageCache::getFromMemory(BinaryData::djduck_png,BinaryData::djduck_pngSize);
+    faceplate=juce::ImageCache::getFromMemory(BinaryData::analogcyberfaceplate_png,BinaryData::analogcyberfaceplate_pngSize);
     amount.setComponentID("amount");amount.setName("Ducking amount");
     amount.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);amount.setTextBoxStyle(juce::Slider::NoTextBox,false,0,0);
     amount.setRotaryParameters(juce::MathConstants<float>::pi*1.25f,juce::MathConstants<float>::pi*2.75f,true);
@@ -231,6 +239,9 @@ void DuckerEditor::paintStage(juce::Graphics& g,float amountPercent) {
 }
 void DuckerEditor::paint(juce::Graphics& g) {
     g.fillAll(background);
+    g.setOpacity(0.7f);g.drawImage(faceplate,getLocalBounds().toFloat(),juce::RectanglePlacement::stretchToFit);g.setOpacity(1);
+    g.setColour(muted.withAlpha(0.22f));g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(7),7,1);
+    g.setColour(yellow.withAlpha(0.4f));g.drawHorizontalLine(88,34,324);
     text(g,"openDucker",{34,22,265,35},29,paper,juce::Justification::centredLeft,true);
     text(g,"Find your bounce.",{35,59,260,23},14,muted);
     const int state=owner.syncState.load(std::memory_order_relaxed);
@@ -244,7 +255,8 @@ void DuckerEditor::paint(juce::Graphics& g) {
     text(g,"Deep",{247,267,52,20},12,muted,juce::Justification::centredRight);
     text(g,"Rate",{512,306,44,34},13,muted);
     const juce::Rectangle<float> graph{34,356,652,62};
-    g.setColour(panel);g.fillRoundedRectangle(graph,10);
+    g.setGradientFill(juce::ColourGradient(background,graph.getTopLeft(),panel,graph.getBottomRight(),false));g.fillRoundedRectangle(graph,6);
+    g.setColour(muted.withAlpha(0.25f));g.drawRoundedRectangle(graph,6,1);
     const auto inner=graph.reduced(12,9);
     g.setColour(muted.withAlpha(0.16f));
     for(int i=1;i<4;++i) {const auto x=inner.getX()+inner.getWidth()*static_cast<float>(i)/4;g.drawVerticalLine(juce::roundToInt(x),inner.getY(),inner.getBottom());}
