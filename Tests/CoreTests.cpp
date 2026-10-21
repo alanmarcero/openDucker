@@ -60,16 +60,44 @@ int main() {
 
         duck::Engine loop; loop.prepare(48000);
         loop.beginBlock({3.99,120,true,true,true,1.25,4.0},{1,0,1,false});
-        for(int i=0;i<240;++i) loop.nextGain();
-        near(loop.nextGain(),duck::envelope(0.25,0,0.006),1e-11,"In-buffer loop didn't wrap");
+        double loopLast=0;
+        for(int i=0;i<240;++i) loopLast=loop.nextGain();
+        near(loop.nextGain(),loopLast,1e-11,"Fractional loop clicks");
+        near(loop.phase(),0.25,1e-11,"In-buffer loop didn't wrap phase");
         loop.beginBlock({1.25+1.0/24000,120,true,true,true,1.25,4.0},{1,0,1,false});
-        near(loop.nextGain(),duck::envelope(0.25+1.0/24000,0,0.006),1e-11,"Loop wrap treated as a seek");
+        for(int i=0;i<96;++i) loop.nextGain();
+        near(loop.phase(),0.254,1e-11,"Loop transition delays phase");
+        near(loop.nextGain(),duck::envelope(0.25+97.0/24000,0,0.006),1e-11,"Loop transition never completes");
         duck::Engine tempo; tempo.prepare(48000);
         tempo.beginBlock({0,120,true,true},{1,0,1,false});
         for(int i=0;i<12000;++i) tempo.nextGain();
         tempo.beginBlock({0.5,60,true,true},{1,0,1,false});
         for(int i=0;i<24000;++i) tempo.nextGain();
         near(tempo.nextGain(),0,1e-12,"Tempo change missed beat");
+        duck::Engine tempoEdge; tempoEdge.prepare(48000);
+        tempoEdge.beginBlock({0.997-1.0/24000,120,true,true},{1,0,1,false});
+        const double beforeTempo=tempoEdge.nextGain();
+        tempoEdge.beginBlock({0.997,60,true,true},{1,0,1,false});
+        const double afterTempo=tempoEdge.nextGain();
+        near(afterTempo,0.5,1e-12,"Tempo width is not smoothed independently of phase");
+        require(std::abs(afterTempo-beforeTempo)<0.012,"Tempo change clicks in pre-duck ramp");
+        for(int blockSize : {1,64,240,511,4096}) for(int rate : {1,5}) {
+            duck::Engine partitioned; partitioned.prepare(48000);
+            duck::Engine single; single.prepare(48000);
+            single.beginBlock({3.99,120,true,true,true,1.25,4},{1,0,rate,false});
+            for(int offset=0;offset<96000;) {
+                const double absolute=3.99+offset/24000.0;
+                const double position=absolute<4 ? absolute : 1.25+std::fmod(absolute-1.25,2.75);
+                partitioned.beginBlock({position,120,true,true,true,1.25,4},{1,0,rate,false});
+                const int n=std::min(blockSize,96000-offset);
+                for(int i=0;i<n;++i) { const auto a=partitioned.nextGain(),b=single.nextGain(); if(std::abs(a-b)>2e-11) std::cerr << "block=" << blockSize << " rate=" << rate << " sample=" << offset+i << " a=" << a << " b=" << b << " phase=" << partitioned.phase() << " refPhase=" << single.phase() << "\n"; near(a,b,2e-11,"Loop transition depends on buffer partition"); }
+                offset+=n;
+            }
+        }
+        duck::Engine integerLoop; integerLoop.prepare(48000);
+        integerLoop.beginBlock({3.99,120,true,true,true,0,4},{1,0,1,false});
+        for(int i=0;i<240;++i) integerLoop.nextGain();
+        near(integerLoop.nextGain(),0,1e-12,"Whole-beat loop minimum is smeared");
         std::cout << "PASS in-buffer loops, fractional loop points, tempo changes\n";
 
         duck::Engine e; e.prepare(48000);

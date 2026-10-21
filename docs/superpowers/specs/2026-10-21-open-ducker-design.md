@@ -15,7 +15,7 @@ Alternative: a free-running tempo oscillator is simple but drifts and fails seek
 - Rate choices: 1/2, 1/4 (default), 1/8, 1/16, 1/4 triplet, 1/8 dotted. Values are 2, 1, 0.5, 0.25, 2/3, 0.75 quarter notes.
 - Re-anchor every block so play, seek, loop and tempo changes never accumulate clock drift. Honor reported loop points within a buffer. Negative PPQ is valid.
 - Smooth, Punch, Snap, Swell all reach minimum gain at phase zero. Recovery curves join a short smooth pre-duck ramp before the next beat; the boundary has continuous value and first derivative. This small pre-duck is part of the shape, not audio latency.
-- Interpolate amount and shape/rate changes over 5 ms without delaying the underlying beat phase. No smoothing filter is applied to the periodic envelope. Transport discontinuities crossfade the old gain into the new host-aligned envelope over 2 ms; this deliberately trades the first 2 ms of amplitude after a seek for click suppression, without slewing the phase.
+- Interpolate amount and shape/rate changes over 5 ms without delaying the underlying beat phase. No smoothing filter is applied to the periodic envelope. Transport discontinuities and nonperiodic loop wraps crossfade the old gain into the new host-aligned envelope over 2 ms; this deliberately trades the first 2 ms of amplitude after a jump for click suppression, without slewing the phase. Whole-cycle loops preserve exact minima without this transition. Smooth tempo-dependent envelope width over 2 ms independently of phase.
 - Missing/invalid PPQ or tempo, or stopped transport, ramps to dry. Never invent a free-running clock and claim it is synced. The UI distinguishes Playing, Stopped and No host sync.
 - Gain is always in [0,1], applied equally to all channels. No amplification, saturation or hard clipper; already clipped input cannot be repaired. Float and double precision, mono and stereo supported.
 - Host data is the accuracy boundary: block-level APIs cannot reveal unreported intra-buffer tempo ramps/seeks. Test and document this rather than promise host-independent timing perfection.
@@ -28,7 +28,7 @@ Alternative: a free-running tempo oscillator is simple but drifts and fails seek
 
 Test exact beat minima, buffer partition invariance, long timelines, sample rates 44.1–192 kHz, tempo changes, negative PPQ, loops, seeks, invalid timing, transport start/stop, bounded output and stereo identity. Include continuous-boundary and automation transient checks. Test native parameter controls, session recall, float/double processing and capture actual editor screenshots. Run pluginval and AU validation locally where possible; CI repeats DSP/sanitizers and native builds on macOS/Windows. Release ZIPs include exact bundle names and checksums. Update the manager catalog after real release assets exist and prove install/remove using isolated folders.
 
-Publish a public GPL-3.0 repository under alanmarcero/openDucker; preserve JUCE notices. The user explicitly requested planning, development, publication and manager integration in one task.
+Publish a public AGPL-3.0 repository under alanmarcero/openDucker; preserve JUCE notices. The user explicitly requested planning, development, publication and manager integration in one task.
 
 ## Primary timing references
 
