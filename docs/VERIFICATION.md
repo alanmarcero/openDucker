@@ -7,11 +7,11 @@ Local verification on 2026-10-21, Apple Silicon macOS, JUCE 8.0.9:
 - Release VST3 and AU builds pass; both bundle signatures verify.
 - CTest: core, effects, and native plugin suites pass (3/3).
 - Effects suite passes AddressSanitizer and UndefinedBehaviorSanitizer, including full-buffer reset and subsequent silence.
-- VST3 passes pluginval strictness level 5. A separate local AU factory harness loads the built component, selects Plate, and renders 102,400 stereo frames. This does not replace or register the installed plugin globally.
+- VST3 passes pluginval strictness level 5. A separate local AU factory harness loads the built component, selects Plate, renders 102,400 stereo frames, then verifies silence after an explicit AU reset. This does not replace or register the installed plugin globally.
 - Direct old/new AU comparison confirms the original four parameter IDs and order are preserved; 19 new controls follow them.
 - At a 25-second setting, measured RT60 at 48 kHz is 23.82 seconds for Room, 24.52 for Hall, and 24.41 for Plate.
 - DSP coverage includes delay timing/feedback, mono and ping-pong including mode changes with stored echoes, independent EQ shelves, width, sustain, final-tail Destroy, short-tail activity, smooth stage/time changes, and reset without stale history. Stability checks cover 44.1–192 kHz.
-- Native tests exercise all Dry/Wet/Both and Before/After combinations in float and double, full bypass, mono output and metering, fully wet startup, old/new state recall, every control, panel collapse, host-synced speaker motion, and animated sparks at 70%. The 1080 × 1200 editor capture was inspected.
+- Native tests exercise all Dry/Wet/Both and Before/After combinations in float and double, full bypass, mono output and metering, fully wet startup, old/new state recall, host-reset silence, EQ drag detents with continuous automation, every control, panel collapse, host-synced speaker motion, and animated sparks at 70%. The 1080 × 1200 editor capture was inspected.
 - Independent DSP review and focused re-review pass after correcting short-tail activation, existing-tail mono conversion, and bulk reset work. Reset now invalidates buffer history without clearing sample storage; measured median 0.167 microseconds at 48/192/384 kHz.
 - A local optimized effects benchmark processed six seconds of audio in 0.034 seconds at 48 kHz and 0.145 seconds at 192 kHz, with both effects and Sustain active. These hardware-specific figures exclude host/editor overhead and active Destroy processing.
 

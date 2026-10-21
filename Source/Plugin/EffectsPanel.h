@@ -8,8 +8,13 @@ public:
     void resized() override;
     void refresh();
 private:
+    class Knob final : public juce::Slider {
+    public:
+        bool zeroDetent=false;
+        double snapValue(double,DragMode) override;
+    };
     DuckerProcessor& owner;
-    std::array<juce::Slider,12> knobs;
+    std::array<Knob,12> knobs;
     std::array<juce::ComboBox,4> choices;
     std::array<juce::TextButton,3> switches;
     std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>,12> knobAttachments;

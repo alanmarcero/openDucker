@@ -113,6 +113,38 @@ template<typename Sample> void testEffectsRouting() {
     restored.parameters.getParameter("reverbLength")->setValueNotifyingHost(1);
     require(restored.getTailLengthSeconds()>=25,"Host may truncate long reverb tails");
 }
+template<typename Sample> bool testHostReset(const char* precision) {
+    DuckerProcessor p;
+    const auto set=[&](const char* id,float value) {auto* parameter=p.parameters.getParameter(id);parameter->setValueNotifyingHost(parameter->convertTo0to1(value));};
+    set("fxEnabled",1);set("delayEnabled",1);set("reverbEnabled",0);set("fxMix",100);
+    set("amount",0);set("delayLength",0);set("delayFeedback",0);set("delayMode",0);
+    set("duckTarget",1);set("duckPosition",0);
+    Host host;host.position.setIsPlaying(true);host.position.setBpm(120);host.position.setPpqPosition(0);p.setPlayHead(&host);
+    p.prepareToPlay(48000,64);juce::MidiBuffer midi;
+    juce::AudioBuffer<Sample> buffer(2,64);
+    const auto impulse=[&] {
+        buffer.setSize(2,64);buffer.clear();buffer.setSample(0,0,Sample{1});buffer.setSample(1,0,Sample{1});p.processBlock(buffer,midi);
+    };
+    const auto tail=[&] {
+        buffer.setSize(2,6000);buffer.clear();p.processBlock(buffer,midi);return buffer.getMagnitude(0,buffer.getNumSamples());
+    };
+    impulse();host.position.setIsPlaying(false);
+    require(tail()>.9,"Stopping transport discards the delay tail");
+    require(p.outputPeak.load()>.9f,"Reset regression did not populate the meter");
+    impulse();
+    std::vector<float> values;
+    for(auto* parameter:p.getParameters()) values.push_back(parameter->getValue());
+    juce::AudioProcessor& hostProcessor=p;hostProcessor.reset();
+    const double peak=tail();
+    std::cout<<precision<<" silent output peak after host reset="<<peak<<'\n';
+    for(int i=0;i<p.getParameters().size();++i)
+        require(std::abs(p.getParameters()[i]->getValue()-values[static_cast<size_t>(i)])<1e-7f,"Host reset changes parameters or routing");
+    if(!std::isfinite(peak) || peak>0) return false;
+    require(p.outputPeak.load()<=0 && p.destroyLevel.load()<=0,"Host reset leaves stale effect meters");
+    impulse();require(tail()>.9,"Host reset disables configured effects");
+    p.setPlayHead(nullptr);
+    return true;
+}
 template<typename Sample> void testMonoAndDisabledEffects() {
     DuckerProcessor p;
     auto buses=p.getBusesLayout();buses.inputBuses.set(0,juce::AudioChannelSet::mono());buses.outputBuses.set(0,juce::AudioChannelSet::mono());
@@ -135,6 +167,41 @@ template<typename Sample> void testMonoAndDisabledEffects() {
     require(buffer.getSample(0,12000)>.4,"FX Mix silences audio with both FX off");
     require(p.getTailLengthSeconds()<1e-9,"Both FX off reports a tail");
     p.setPlayHead(nullptr);
+}
+void testEqDetents(DuckerProcessor& p,juce::AudioProcessorEditor& editor) {
+    for(const auto* id:{"delayBass","delayTreble","reverbBass","reverbTreble"}) {
+        auto* knob=dynamic_cast<juce::Slider*>(find(editor,id));require(knob!=nullptr,"EQ knob missing");
+        auto* parameter=p.parameters.getParameter(id);
+        const auto start=knob->getLocalBounds().toFloat().getCentre();
+        const auto time=juce::Time::getCurrentTime();
+        const auto event=[&](float distance,bool dragged) {
+            return juce::MouseEvent{juce::Desktop::getInstance().getMainMouseSource(),start+juce::Point<float>{distance,0},
+                juce::ModifierKeys{juce::ModifierKeys::leftButtonModifier},1,0,0,0,0,knob,knob,time,start,time,1,dragged};
+        };
+        for(const double direction:{1.0,-1.0}) {
+            const double initial=-direction*.8;
+            knob->setValue(initial,juce::sendNotificationSync);knob->mouseDown(event(0,false));
+            for(const double attempted:{-direction*.1,direction*.1,direction*.8}) {
+                const float distance=static_cast<float>((attempted-initial)/(knob->getMaximum()-knob->getMinimum())*knob->getMouseDragSensitivity());
+                knob->mouseDrag(event(distance,true));
+                const double expected=std::abs(attempted)<.2 ? 0 : attempted;
+                require(std::abs(knob->getValue()-expected)<.011,"EQ drag misses the zero detent or cannot leave it");
+                require(std::abs(p.parameters.getRawParameterValue(id)->load()-expected)<.011,"EQ detent does not update its parameter");
+            }
+            knob->mouseUp(event(0,true));
+        }
+        for(const float value:{-.1f,.1f}) {
+            parameter->setValueNotifyingHost(parameter->convertTo0to1(value));
+            require(std::abs(knob->getValue()-value)<.011 && std::abs(p.parameters.getRawParameterValue(id)->load()-value)<.011,"EQ detent quantizes host automation");
+            require(std::abs(knob->snapValue(value,juce::Slider::notDragging)-value)<1e-7,"EQ detent changes non-drag input");
+        }
+        knob->mouseDoubleClick(event(0,false));require(std::abs(knob->getValue())<.011,"EQ double-click default changed");
+    }
+    for(const auto* id:{"delayLength","delayFeedback","reverbLength","reverbWidth","sustain","destroy","fxMix","output"}) {
+        auto* knob=dynamic_cast<juce::Slider*>(find(editor,id));require(knob!=nullptr,"Non-EQ knob missing");
+        require(std::abs(knob->snapValue(.1,juce::Slider::absoluteDrag)-.1)<1e-7,"EQ detent changes a non-EQ knob");
+    }
+    std::cout<<"PASS EQ zero detents in both drag directions, continuous host automation and double-click defaults\n";
 }
 void testEffectsControls(DuckerProcessor& p,juce::AudioProcessorEditor& editor) {
     const std::array<const char*,12> knobs{"delayLength","delayFeedback","delayBass","delayTreble","reverbLength","reverbWidth","reverbBass","reverbTreble","sustain","destroy","fxMix","output"};
@@ -173,6 +240,8 @@ int main(int argc,char** argv) {
         testAudio<float>(); testAudio<double>();
         testEffectsRouting<float>();testEffectsRouting<double>();
         testMonoAndDisabledEffects<float>();testMonoAndDisabledEffects<double>();
+        const bool floatReset=testHostReset<float>("float"),doubleReset=testHostReset<double>("double");
+        require(floatReset && doubleReset,"Host reset leaves an audible effects tail");
         DuckerProcessor p; p.prepareToPlay(48000,256);
         std::unique_ptr<juce::AudioProcessorEditor> editor(p.createEditor());
         auto* amount=dynamic_cast<juce::Slider*>(find(*editor,"amount"));
@@ -192,6 +261,7 @@ int main(int argc,char** argv) {
         bypass->setToggleState(true,juce::sendNotificationSync);
         require(p.getBypassParameter()->getValue()==1,"Bypass disconnected");
         testEffectsControls(p,*editor);
+        testEqDetents(p,*editor);
         juce::MemoryBlock state; p.getStateInformation(state);
         DuckerProcessor restored; restored.setStateInformation(state.getData(),static_cast<int>(state.getSize()));
         for(auto* parameter:p.getParameters()) {

@@ -7,6 +7,7 @@ class DuckerProcessor final : public juce::AudioProcessor {
 public:
     DuckerProcessor();
     void prepareToPlay(double,int) override;
+    void reset() override;
     void releaseResources() override {}
     bool isBusesLayoutSupported(const BusesLayout&) const override;
     void processBlock(juce::AudioBuffer<float>&,juce::MidiBuffer&) override;

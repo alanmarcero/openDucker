@@ -68,6 +68,10 @@ void DuckerProcessor::prepareToPlay(double sr,int) {
     activeBlend.setCurrentAndTargetValue(bypass->load()>0.5f ? 0.0 : 1.0);
     outputPeak.store(0);destroyLevel.store(0);
 }
+void DuckerProcessor::reset() {
+    resetEffects.store(true);
+    outputPeak.store(0,std::memory_order_relaxed);destroyLevel.store(0,std::memory_order_relaxed);
+}
 double DuckerProcessor::getTailLengthSeconds() const {
     if(fxParameters[FxEnabled]->load()<0.5f || bypass->load()>0.5f) return 0;
     const auto bpm=hostBpm.load();
@@ -119,7 +123,7 @@ template<typename Sample> void DuckerProcessor::process(juce::AudioBuffer<Sample
     settings.reverbSeconds=fx(ReverbLength);settings.reverbWidth=fx(ReverbWidth)*0.01;
     settings.reverbBassDb=fx(ReverbBass);settings.reverbTrebleDb=fx(ReverbTreble);
     settings.sustain=fx(Sustain)*0.01;settings.destroy=fx(Destroy)*0.01;
-    if(resetEffects.exchange(false)) {effects.reset();effectsRunning=false;}
+    if(resetEffects.exchange(false)) {effects.reset();effectsRunning=false;outputPeak.store(0,std::memory_order_relaxed);}
     effects.setParameters(settings);
     double gain=visualGain.load(std::memory_order_relaxed);
     const auto channels=buffer.getArrayOfWritePointers();
