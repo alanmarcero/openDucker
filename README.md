@@ -6,7 +6,7 @@
 
 [Download](https://github.com/alanmarcero/openDucker/releases/latest) · [OpenVST Manager](https://github.com/alanmarcero/alan-m-OpenVSTManager) · [Timing design](docs/superpowers/specs/2026-10-21-open-ducker-design.md)
 
-![The actual openDucker native editor](docs/screenshots/openDucker.png)
+![The actual openDucker native editor](assets/analog-cyber-preview.png)
 
 ## Make it bounce
 

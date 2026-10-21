@@ -27,7 +27,7 @@ private:
     EffectsPanel effectsPanel;
     juce::TextButton effectsToggle;
     bool effectsExpanded=true;
-    juce::Image mascot;
+    juce::Image mascot, faceplate;
     juce::TooltipWindow tooltips{this,600};
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> amountAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> rateAttachment;
