@@ -45,7 +45,7 @@ jobs:
           mkdir -p package/VST3 package/AU
           cp -R "$ARTEFACTS/VST3/openDucker.vst3" package/VST3/
           cp -R "$ARTEFACTS/AU/openDucker.component" package/AU/
-          cp README.md LICENSE THIRD_PARTY.md package/
+          python3 scripts/package_notices.py package
           ditto -c -k --keepParent package openDucker-macOS-universal.zip
       - uses: actions/upload-artifact@v4
         with:
@@ -76,7 +76,8 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force package/VST3 | Out-Null
           Copy-Item -Recurse "$env:ARTEFACTS/VST3/openDucker.vst3" package/VST3/
-          Copy-Item README.md, LICENSE, THIRD_PARTY.md package/
+          python scripts/package_notices.py package
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Compress-Archive -Path package -DestinationPath openDucker-Windows-x64.zip
       - uses: actions/upload-artifact@v4
         with:
