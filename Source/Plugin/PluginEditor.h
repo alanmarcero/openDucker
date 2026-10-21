@@ -1,5 +1,6 @@
 #pragma once
 #include "PluginProcessor.h"
+#include "EffectsPanel.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 
 class DuckLookAndFeel final : public juce::LookAndFeel_V4 {
@@ -16,12 +17,16 @@ public:
     void resized() override;
 private:
     void timerCallback() override;
+    void paintStage(juce::Graphics&,float amountPercent);
     DuckerProcessor& owner;
     DuckLookAndFeel theme;
     juce::Slider amount;
     std::array<juce::TextButton,4> slopes;
     juce::ComboBox rate;
     juce::TextButton bypass;
+    EffectsPanel effectsPanel;
+    juce::TextButton effectsToggle;
+    bool effectsExpanded=true;
     juce::Image mascot;
     juce::TooltipWindow tooltips{this,600};
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> amountAttachment;
