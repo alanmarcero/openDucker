@@ -20,9 +20,13 @@ constexpr std::array<KnobSpec,12> knobSpecs{{
 }};
 }
 
+double EffectsPanel::Knob::snapValue(double value,DragMode mode) {
+    return zeroDetent && mode!=notDragging && std::abs(value)<=.25 ? 0 : value;
+}
 EffectsPanel::EffectsPanel(DuckerProcessor& p):owner(p) {
     for(size_t i=0;i<knobs.size();++i) {
         auto& knob=knobs[i];const auto& spec=knobSpecs[i];
+        knob.zeroDetent=i==2 || i==3 || i==6 || i==7;
         knob.setComponentID(spec.id);knob.setName(spec.name);knob.setTooltip(spec.tip);
         knob.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);knob.setTextBoxStyle(juce::Slider::NoTextBox,false,0,0);
         knob.setRotaryParameters(juce::MathConstants<float>::pi*1.25f,juce::MathConstants<float>::pi*2.75f,true);

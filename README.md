@@ -29,7 +29,7 @@ Turn **FX On** to add the serial chain **Delay → Reverb → Sustain → Destro
 - **Sustain:** a single stereo-linked compression control reduces dynamic range and lifts quiet tails. It extends audible decay without freezing the sound indefinitely.
 - **Destroy:** adds distortion, bit crushing, sample holds and short stutters during the final five seconds of the estimated tail, or the entire tail if it is shorter. Delay length, feedback, reverb length and Sustain affect that estimate. Fresh input fades Destroy out and restarts the tail clock. This is phrase-tail processing: sustained input keeps it waiting. Surviving audio continues past the estimate without being cut off.
 
-Delay and Reverb have individual bypass switches. With both stages off, the plugin returns to its original ducking behavior. Both enabled means the delay repeats feed the reverb. EQ and Sustain can raise output peaks; use **Output** and the peak meter to set the final level. Double-click any small knob to restore its default.
+Delay and Reverb have individual bypass switches. With both stages off, the plugin returns to its original ducking behavior. Both enabled means the delay repeats feed the reverb. EQ and Sustain can raise output peaks; use **Output** and the peak meter to set the final level. Double-click any small knob to restore its default. The four EQ knobs snap to zero while dragging; host automation retains fine adjustments.
 
 ## Timing you can inspect
 
