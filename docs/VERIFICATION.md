@@ -6,8 +6,11 @@ Local verification on 2026-10-21, Apple Silicon macOS, AppleClang 21, JUCE 8.0.9
 - Independent code review and re-review: clean after fixing loop/tempo discontinuities and immediate slope feedback.
 - Debug DSP suite with AddressSanitizer and UndefinedBehaviorSanitizer: pass.
 - pluginval 1.0.4, strictness level 5, built VST3: pass.
+- macOS AU: Apple's auval and pluginval strictness level 5 pass after local registration.
 - Native screenshots reviewed at 1080 x 690; slope, rate, bypass and amount bindings exercised, including immediate host automation feedback and session recall.
 - OpenVST Manager catalog change: 63 tests pass; TypeScript/frontend production build passes.
+- OpenVST Manager UI: nine Playwright tests pass with Chrome and Node 24.
+- A local optimized core benchmark generated 5.12 million gain values in 0.048 seconds (about 0.045% of one realtime 48 kHz core). This excludes host/editor overhead and is hardware-specific.
 
 ## DSP coverage
 
