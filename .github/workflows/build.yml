@@ -5,10 +5,15 @@ on:
   pull_request:
   workflow_dispatch:
   workflow_call:
+    inputs:
+      source_ref:
+        description: Git ref to build (defaults to the triggering commit)
+        required: false
+        type: string
 permissions:
   contents: read
 concurrency:
-  group: build-${{ github.workflow }}-${{ github.ref }}
+  group: build-${{ github.workflow }}-${{ inputs.source_ref || github.ref }}
   cancel-in-progress: true
 jobs:
   dsp:
@@ -16,6 +21,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref }}
       - name: Configure
         run: cmake -S . -B build -DOD_BUILD_PLUGIN=OFF -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
       - run: cmake --build build --parallel 4
@@ -28,6 +35,8 @@ jobs:
       ARTEFACTS: build/openDucker_artefacts/Release
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref }}
       - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
       - run: cmake --build build --config Release --parallel 3
       - run: ctest --test-dir build -C Release --output-on-failure
@@ -45,6 +54,7 @@ jobs:
           mkdir -p package/VST3 package/AU
           cp -R "$ARTEFACTS/VST3/openDucker.vst3" package/VST3/
           cp -R "$ARTEFACTS/AU/openDucker.component" package/AU/
+          export GITHUB_SHA="$(git rev-parse HEAD)"
           python3 scripts/package_notices.py package
           ditto -c -k --keepParent package openDucker-macOS-universal.zip
       - uses: actions/upload-artifact@v4
@@ -63,6 +73,8 @@ jobs:
       ARTEFACTS: build/openDucker_artefacts/Release
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref }}
       - run: cmake -S . -B build -A x64
       - run: cmake --build build --config Release --parallel 4
       - run: ctest --test-dir build -C Release --output-on-failure
@@ -76,6 +88,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force package/VST3 | Out-Null
           Copy-Item -Recurse "$env:ARTEFACTS/VST3/openDucker.vst3" package/VST3/
+          $env:GITHUB_SHA = git rev-parse HEAD
           python scripts/package_notices.py package
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Compress-Archive -Path package -DestinationPath openDucker-Windows-x64.zip
