@@ -112,5 +112,5 @@ void EffectsPanel::paint(juce::Graphics& g) {
     const float meter=juce::jlimit(0.0f,1.0f,(db+60)/60);
     g.setColour(panel);g.fillRoundedRectangle(526,263,140,6,3);
     g.setColour(peak>1 ? yellow : mint);g.fillRoundedRectangle(526,263,140*meter,6,3);
-    g.setColour(muted);g.drawText(peak>0.001f ? juce::String(db,1)+" dBFS" : "Silent",526,278,140,20,juce::Justification::centredLeft);
+    g.setColour(muted);g.drawText(peak>0.001f ? juce::String(db,1)+" dBFS" : "Silent",526,278,140,20,juce::Justification::centredLeft);g.drawText("v1.1.0",526,278,140,20,juce::Justification::centredRight);
 }
