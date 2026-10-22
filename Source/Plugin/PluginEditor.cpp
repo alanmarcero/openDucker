@@ -279,5 +279,5 @@ void DuckerEditor::paint(juce::Graphics& g) {
         g.setColour(yellow.withAlpha(0.85f));g.drawVerticalLine(juce::roundToInt(x),inner.getY()-3,inner.getBottom()+3);
     }
     text(g,"Ducking envelope",{34,426,220,20},12,muted);
-    text(g,"DJ Duck / openDucker",{390,426,200,20},12,muted,juce::Justification::centredRight);
+    text(g,"DJ Duck / openDucker   /   v1.1.0",{350,426,240,20},12,muted,juce::Justification::centredRight);
 }
