@@ -119,9 +119,24 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p):AudioProcessorEditor(p),owner(p),
     amount.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);amount.setTextBoxStyle(juce::Slider::NoTextBox,false,0,0);
     amount.setRotaryParameters(juce::MathConstants<float>::pi*1.25f,juce::MathConstants<float>::pi*2.75f,true);
     amount.setDoubleClickReturnValue(true,65);amount.setWantsKeyboardFocus(true);
-    amount.setTooltip("Ducking depth. 0% is dry; 100% reaches silence on each beat. Double-click resets to 65%.");
+    amount.setTooltip("Ducking depth. 0% disables ducking; FX remain active. 100% reaches silence at each pulse. Double-click resets to 65%.");
     addAndMakeVisible(amount);
     amountAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.parameters,"amount",amount);
+    const std::array<const char*,3> envelopeIds{"hold","recovery","phaseOffset"};
+    const std::array<const char*,3> envelopeTips{
+        "Hold the deepest duck for this percentage of the cycle's recovery region. 0% starts recovering immediately.",
+        "Time to recover, as a percentage of the cycle remaining after Hold. Lower values leave more time at full volume.",
+        "Delay the duck by this percentage of a cycle. 50% moves the pulse halfway between beats."};
+    for(size_t i=0;i<envelopeKnobs.size();++i) {
+        auto& knob=envelopeKnobs[i];auto* parameter=p.parameters.getParameter(envelopeIds[i]);
+        knob.setComponentID(envelopeIds[i]);knob.setName(parameter->getName(32));knob.setTooltip(envelopeTips[i]);
+        knob.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);knob.setTextBoxStyle(juce::Slider::NoTextBox,false,0,0);
+        knob.setRotaryParameters(juce::MathConstants<float>::pi*1.25f,juce::MathConstants<float>::pi*2.75f,true);
+        addAndMakeVisible(knob);
+        envelopeAttachments[i]=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.parameters,envelopeIds[i],knob);
+        knob.textFromValueFunction=[](double value) {return juce::String(value,1)+"%";};
+        knob.setDoubleClickReturnValue(true,parameter->convertFrom0to1(parameter->getDefaultValue()));
+    }
     const std::array<juce::String,4> names{"Smooth","Punch","Snap","Swell"};
     for(size_t i=0;i<slopes.size();++i) {
         auto& button=slopes[i];button.setButtonText(names[i]);button.setComponentID("shape"+juce::String(static_cast<int>(i)));
@@ -146,9 +161,9 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p):AudioProcessorEditor(p),owner(p),
     effectsToggle.onClick=[this] {
         effectsExpanded=!effectsExpanded;effectsPanel.setVisible(effectsExpanded);
         effectsToggle.setButtonText(effectsExpanded ? "Hide FX" : "Show FX");
-        setSize(720,effectsExpanded ? 800 : 460);
+        setSize(720,effectsExpanded ? 900 : 560);
     };
-    setSize(720,800);timerCallback();startTimerHz(30);
+    setSize(720,900);timerCallback();startTimerHz(30);
 }
 DuckerEditor::~DuckerEditor() {stopTimer();setLookAndFeel(nullptr);}
 void DuckerEditor::timerCallback() {
@@ -160,7 +175,8 @@ void DuckerEditor::resized() {
     amount.setBounds(65,76,230,215);
     for(size_t i=0;i<slopes.size();++i) slopes[i].setBounds(34+static_cast<int>(i)*84,306,76,34);
     rate.setBounds(560,306,126,34);bypass.setBounds(606,24,80,30);
-    effectsToggle.setBounds(606,426,80,22);effectsPanel.setBounds(22,460,676,326);
+    for(size_t i=0;i<envelopeKnobs.size();++i) envelopeKnobs[i].setBounds(34+static_cast<int>(i)*108,350,96,96);
+    effectsToggle.setBounds(606,526,80,22);effectsPanel.setBounds(22,560,676,326);
 }
 void DuckerEditor::paintStage(juce::Graphics& g,float amountPercent) {
     const juce::Graphics::ScopedSaveState saved(g);
@@ -254,7 +270,7 @@ void DuckerEditor::paint(juce::Graphics& g) {
     text(g,"Dry",{66,267,52,20},12,muted);
     text(g,"Deep",{247,267,52,20},12,muted,juce::Justification::centredRight);
     text(g,"Rate",{512,306,44,34},13,muted);
-    const juce::Rectangle<float> graph{34,356,652,62};
+    const juce::Rectangle<float> graph{34,456,652,62};
     g.setGradientFill(juce::ColourGradient(background,graph.getTopLeft(),panel,graph.getBottomRight(),false));g.fillRoundedRectangle(graph,6);
     g.setColour(muted.withAlpha(0.25f));g.drawRoundedRectangle(graph,6,1);
     const auto inner=graph.reduced(12,9);
@@ -265,10 +281,16 @@ void DuckerEditor::paint(juce::Graphics& g) {
     const int speed=juce::jlimit(0,5,static_cast<int>(owner.parameters.getRawParameterValue("rate")->load()));
     const double edge=std::min(0.08,0.003*(bpm>0 ? bpm : 120)/(60*duck::cycleBeats[static_cast<size_t>(speed)]));
     const bool bypassed=owner.parameters.getRawParameterValue("bypass")->load()>0.5f;
+    const double hold=owner.parameters.getRawParameterValue("hold")->load()*.01;
+    const double recovery=owner.parameters.getRawParameterValue("recovery")->load()*.01;
+    const double offset=owner.parameters.getRawParameterValue("phaseOffset")->load()*.01;
+    text(g,"Shape your bounce",{380,365,290,23},16,paper,juce::Justification::centredLeft,true);
+    text(g,"Hold low, recover, then stay open.",{380,393,290,20},12,muted,juce::Justification::centredLeft);
+    text(g,"Phase moves the pulse within the beat.",{380,415,300,20},12,muted,juce::Justification::centredLeft);
     juce::Path curve;
     for(int i=0;i<=652;++i) {
         const auto phase=static_cast<double>(i)/652;
-        const auto gain=bypassed ? 1.0 : 1-depth*(1-duck::envelope(phase,slope,edge));
+        const auto gain=bypassed ? 1.0 : 1-depth*(1-duck::envelope(phase-offset-std::floor(phase-offset),slope,edge,hold,recovery));
         const float x=inner.getX()+static_cast<float>(phase)*inner.getWidth();
         const float y=inner.getBottom()-static_cast<float>(gain)*inner.getHeight();
         if(i==0) curve.startNewSubPath(x,y);else curve.lineTo(x,y);
@@ -278,6 +300,6 @@ void DuckerEditor::paint(juce::Graphics& g) {
         const float x=inner.getX()+owner.visualPhase.load(std::memory_order_relaxed)*inner.getWidth();
         g.setColour(yellow.withAlpha(0.85f));g.drawVerticalLine(juce::roundToInt(x),inner.getY()-3,inner.getBottom()+3);
     }
-    text(g,"Ducking envelope",{34,426,220,20},12,muted);
-    text(g,"DJ Duck / openDucker   /   v1.1.0",{350,426,240,20},12,muted,juce::Justification::centredRight);
+    text(g,"Ducking envelope",{34,526,220,20},12,muted);
+    text(g,"DJ Duck / openDucker   /   v1.2.0",{350,526,240,20},12,muted,juce::Justification::centredRight);
 }

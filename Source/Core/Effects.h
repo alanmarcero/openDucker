@@ -13,6 +13,7 @@ struct EffectsParameters {
  int reverbType=1;
  double reverbSeconds=6, reverbWidth=1, reverbBassDb=0, reverbTrebleDb=0;
  double sustain=0, destroy=0;
+ bool parallel=false, destroyAlways=false;
 };
 class Effects {
 public:
@@ -65,6 +66,7 @@ private:
  double rate=48000,smoothing=0,detectorAttack=0,detectorRelease=0;
  double delaySamples=24000,oldDelaySamples=24000,tapFade=1,tapStep=0,targetDelaySamples=24000;
  double feedback=.35,pingPong=1,width=1,sustain=0,destroy=0,delayMix=1,reverbMix=1;
+ double parallelMix=0;
  double envelope=0,compressionGain=1,activity=0,quietSeconds=0,tailEstimate=6;
  double destroyEnvelope=0,gainSmoothing=0,activitySmoothing=0,destroyRelease=0;
  double quietHold=.08,destroyAttackSmoothing=0;

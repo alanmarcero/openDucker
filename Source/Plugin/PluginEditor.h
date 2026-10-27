@@ -21,6 +21,8 @@ private:
     DuckerProcessor& owner;
     DuckLookAndFeel theme;
     juce::Slider amount;
+    std::array<juce::Slider,3> envelopeKnobs;
+    std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>,3> envelopeAttachments;
     std::array<juce::TextButton,4> slopes;
     juce::ComboBox rate;
     juce::TextButton bypass;

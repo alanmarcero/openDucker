@@ -14,7 +14,7 @@ constexpr std::array<KnobSpec,12> knobSpecs{{
     {"reverbBass","Bass","Boost or cut reverb bass by up to 12 dB."},
     {"reverbTreble","Treble","Boost or cut reverb treble by up to 12 dB."},
     {"sustain","Sustain","Compress peaks and lift quieter effect tails. Higher settings sustain the sound longer."},
-    {"destroy","Destroy","Glitch, crush and distort the last five seconds of the estimated tail. New input resets the effect."},
+    {"destroy","Destroy","Glitch, crush and distort. Always acts during playback; Tail acts during the final five seconds of the estimated FX tail."},
     {"fxMix","FX Mix","Blend original dry audio with the processed effects. 100% is effects only."},
     {"output","Output","Final output level. The peak meter turns yellow above 0 dBFS."}
 }};
@@ -44,11 +44,13 @@ EffectsPanel::EffectsPanel(DuckerProcessor& p):owner(p) {
             knob.textFromValueFunction=[](double value) {return juce::String(juce::roundToInt(value))+"%";};
         }
     }
-    const std::array<const char*,4> choiceIds{"duckTarget","duckPosition","delayMode","reverbType"};
-    const std::array<juce::StringArray,4> choiceItems{{{"Dry","Wet","Both"},{"Before FX","After FX"},{"Mono","Ping-pong"},{"Room","Hall","Plate"}}};
-    const std::array<const char*,4> choiceTips{"Select which signal ducks: original dry input, effects, or both.",
+    const std::array<const char*,6> choiceIds{"duckTarget","duckPosition","delayMode","reverbType","fxFlow","destroyMode"};
+    const std::array<juce::StringArray,6> choiceItems{{{"Dry","Wet","Both"},{"Before FX","After FX"},{"Mono","Ping-pong"},{"Room","Hall","Plate"},{"Serial","Parallel"},{"Tail","Always"}}};
+    const std::array<const char*,6> choiceTips{"Select which signal ducks: original dry input, effects, or both.",
         "Before FX ducks the effects input, allowing tails to ring. After FX ducks the complete effects output. Dry-only does not use this switch.",
-        "Mono repeats stay centered. Ping-pong repeats alternate left and right.","Choose the reverb character. Length, Width, Bass and Treble apply to every type."};
+        "Mono repeats stay centered. Ping-pong repeats alternate left and right.","Choose the reverb character. Length, Width, Bass and Treble apply to every type.",
+        "Parallel keeps delay echoes and reverb separate and audible. Serial sends delay repeats into the reverb.",
+        "Always processes continuous audio, even with Delay and Reverb off. Tail waits for the source to stop and needs a delay or reverb tail."};
     for(size_t i=0;i<choices.size();++i) {
         auto& choice=choices[i];choice.setComponentID(choiceIds[i]);choice.setName(p.parameters.getParameter(choiceIds[i])->getName(64));choice.setTooltip(choiceTips[i]);
         choice.addItemList(choiceItems[i],1);addAndMakeVisible(choice);
@@ -71,7 +73,7 @@ void EffectsPanel::refresh() {
     switches[2].setButtonText(switches[2].getToggleState() ? "Reverb On" : "Reverb Off");
     choices[1].setEnabled(choices[0].getSelectedId()!=1);
     choices[1].setAlpha(choices[1].isEnabled() ? 1.0f : 0.4f);
-    for(size_t i=2;i<choices.size();++i) {
+    for(size_t i=2;i<4;++i) {
         choices[i].setEnabled(switches[i-1].getToggleState());choices[i].setAlpha(choices[i].isEnabled() ? 1.0f : 0.4f);
     }
     for(size_t i=0;i<8;++i) {
@@ -81,6 +83,7 @@ void EffectsPanel::refresh() {
 }
 void EffectsPanel::resized() {
     switches[0].setBounds(10,8,74,28);
+    choices[4].setBounds(555,8,110,28);choices[5].setBounds(526,211,140,22);
     choices[0].setBounds(132,8,82,28);choices[1].setBounds(225,8,118,28);
     switches[1].setBounds(10,58,90,26);switches[2].setBounds(354,58,100,26);
     choices[2].setBounds(211,58,110,26);choices[3].setBounds(555,58,110,26);
@@ -94,23 +97,24 @@ void EffectsPanel::resized() {
 void EffectsPanel::paint(juce::Graphics& g) {
     g.setColour(panel.withAlpha(0.55f));g.fillRoundedRectangle(0,48,332,150,10);g.fillRoundedRectangle(344,48,332,150,10);
     g.setColour(muted);g.setFont(juce::FontOptions(12));g.drawText("Duck",92,8,36,28,juce::Justification::centred);
-    const bool before=choices[1].getSelectedId()==1 && choices[0].getSelectedId()!=1;
-    juce::String chain;
-    if(before) chain="Duck > ";
-    if(switches[1].getToggleState()) chain+="Delay > ";
-    if(switches[2].getToggleState()) chain+="Reverb > ";
-    chain+="Sustain > Destroy";
-    if(!before && choices[0].getSelectedId()!=1) chain+=" > Duck";
-    g.drawText(chain,355,8,310,28,juce::Justification::centredRight);
+    const bool enabled=switches[0].getToggleState() && (switches[1].getToggleState() || switches[2].getToggleState() || knobs[8].getValue()>0 || knobs[9].getValue()>0);
+    const int target=choices[0].getSelectedId();
+    const bool bypassed=owner.parameters.getRawParameterValue("bypass")->load()>0.5f;
+    const juce::String dry=bypassed ? "clean" : !enabled || target!=2 ? "ducked" : "clean";
+    const juce::String wet=bypassed ? "bypassed" : !enabled ? "off" : target==1 ? "clean" : choices[1].getSelectedId()==1 ? "ducked input" : "ducked output";
+    g.setFont(juce::FontOptions(11));
+    g.drawText("Dry: "+dry,355,5,195,16,juce::Justification::centredLeft);
+    g.drawText("FX: "+wet,355,22,195,16,juce::Justification::centredLeft);
+    g.setFont(juce::FontOptions(12));
     g.setColour(panel);g.drawHorizontalLine(207,0,676);g.drawVerticalLine(262,220,307);
     const float activity=owner.destroyLevel.load(std::memory_order_relaxed);
     g.setColour(activity>0.01f ? yellow : muted.withAlpha(0.35f));g.fillEllipse(209,230,5,5);
-    const bool armed=switches[0].getToggleState() && (switches[1].getToggleState() || switches[2].getToggleState()) && knobs[9].getValue()>0;
-    g.setColour(muted);g.drawText(activity>0.01f ? "Destroying tail" : (armed ? "Tail armed" : "Destroy off"),526,233,140,20,juce::Justification::centredLeft);
+    const bool armed=enabled && knobs[9].getValue()>0;
+    g.setColour(muted);g.drawText(activity>0.01f ? (choices[5].getSelectedId()==2 ? "Destroy active" : "Destroying tail") : (armed ? "Tail armed" : "Destroy off"),526,238,140,20,juce::Justification::centredLeft);
     const float peak=owner.outputPeak.load(std::memory_order_relaxed);
     const float db=peak>0 ? 20*std::log10(peak) : -60;
     const float meter=juce::jlimit(0.0f,1.0f,(db+60)/60);
     g.setColour(panel);g.fillRoundedRectangle(526,263,140,6,3);
     g.setColour(peak>1 ? yellow : mint);g.fillRoundedRectangle(526,263,140*meter,6,3);
-    g.setColour(muted);g.drawText(peak>0.001f ? juce::String(db,1)+" dBFS" : "Silent",526,278,140,20,juce::Justification::centredLeft);g.drawText("v1.1.0",526,278,140,20,juce::Justification::centredRight);
+    g.setColour(muted);g.drawText(peak>0.001f ? juce::String(db,1)+" dBFS" : "Silent",526,278,140,20,juce::Justification::centredLeft);g.drawText("v1.2.0",526,278,140,20,juce::Justification::centredRight);
 }

@@ -1,12 +1,14 @@
-One knob. Four slopes. DJ Duck on the decks.
+openDucker v1.2.0 improves FX audibility, makes routing explicit, and adds ducker envelope controls.
 
-- Host-anchored, per-sample rhythmic ducking with zero audio latency.
-- Smooth, Punch, Snap and Swell recovery slopes; six musical rates.
-- Continuous beat boundaries, 5 ms control smoothing and 2 ms transport-jump transitions.
-- Mono/stereo, float/double processing, host automation and session recall.
-- macOS universal VST3 + AU and Windows x64 VST3.
-- Original artwork and an uncluttered native editor with live envelope display.
+- Add Hold, Recovery and Phase controls with a live envelope preview and click-suppressed automation.
+- Add Parallel FX flow so delay echoes and immediate reverb remain audible. Serial flow remains available.
+- Fix Sustain being silently skipped with Delay and Reverb off.
+- Add Always Destroy for continuous audio and standalone use. Tail mode retains phrase-end processing.
+- Correct the serial delay-plus-reverb tail estimate and report standalone Destroy's stutter tail to hosts.
+- Show whether the dry signal and FX are clean, ducked before FX, or ducked after FX.
+- Preserve older sessions' Serial/Tail modes, envelope defaults and existing automation parameter IDs.
+- Verify every Dry/Wet/Both × Before/After combination for each FX stage and both flows in float and double precision.
 
-Download the ZIP for your platform or install using OpenVST Manager. Checksums are included in SHA256SUMS.txt. macOS bundles are ad-hoc signed, not notarized; Windows builds have no publisher certificate.
+Install the macOS universal VST3/AU or Windows x64 VST3 ZIP, or update through OpenVST Manager. Close your DAW before replacing the plugin and rescan afterward. SHA256SUMS.txt covers both archives. macOS bundles are ad-hoc signed; Windows binaries have no publisher certificate.
 
-Sync accuracy follows the host's reported PPQ, BPM and loop context. Missing timing or a stopped transport returns to dry. Unreported intra-buffer tempo changes cannot be reconstructed. See the README for the timing contract and installation instructions.
+Ducking follows host PPQ/BPM. Stopped or missing transport timing disables ducking while FX can still ring out. Tail timing remains an estimate. No commercial-DAW listening session is claimed; see docs/VERIFICATION.md for executed checks.

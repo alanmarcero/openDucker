@@ -1,13 +1,15 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include <cmath>
+#include <tuple>
 
 namespace {
 double trimGain(float db) { return std::pow(10.0,std::round(static_cast<double>(db)*100)/2000); }
 constexpr std::array<double,8> delayBeats{0.125,0.25,0.5,0.75,1,1.5,2,4};
-constexpr std::array<const char*,19> fxIds{"fxEnabled","duckTarget","duckPosition","fxMix","delayEnabled","delayLength",
+constexpr std::array<const char*,21> fxIds{"fxEnabled","duckTarget","duckPosition","fxMix","delayEnabled","delayLength",
     "delayFeedback","delayBass","delayTreble","delayMode","reverbEnabled","reverbType",
-    "reverbLength","reverbWidth","reverbBass","reverbTreble","sustain","destroy","output"};
+    "reverbLength","reverbWidth","reverbBass","reverbTreble","sustain","destroy","output","fxFlow","destroyMode"};
+constexpr std::array<const char*,3> envelopeIds{"hold","recovery","phaseOffset"};
 }
 juce::AudioProcessorValueTreeState::ParameterLayout DuckerProcessor::layout() {
     juce::AudioProcessorValueTreeState::ParameterLayout result;
@@ -44,6 +46,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout DuckerProcessor::layout() {
     number("sustain","Sustain",0,100,0,"%");
     number("destroy","Destroy",0,100,0,"%");
     number("output","Output",-24,12,0,"dB");
+    for(const auto& spec:std::array<std::tuple<const char*,const char*,float,float,float>,3>{{
+        {"hold","Hold",0,80,0},{"recovery","Recovery",2,100,100},{"phaseOffset","Phase",0,100,0}}}) {
+        const auto& [id,name,low,high,initial]=spec;
+        result.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID{id,3},name,
+            juce::NormalisableRange<float>{low,high,0.1f},initial,juce::AudioParameterFloatAttributes{}.withLabel("%")));
+    }
+    result.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID{"fxFlow",3},"FX flow",juce::StringArray{"Serial","Parallel"},1));
+    result.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID{"destroyMode",3},"Destroy mode",juce::StringArray{"Tail","Always"},1));
     return result;
 }
 DuckerProcessor::DuckerProcessor()
@@ -52,11 +62,13 @@ DuckerProcessor::DuckerProcessor()
     amount=parameters.getRawParameterValue("amount"); shape=parameters.getRawParameterValue("shape");
     rate=parameters.getRawParameterValue("rate"); bypass=parameters.getRawParameterValue("bypass");
     for(size_t i=0;i<fxIds.size();++i) fxParameters[i]=parameters.getRawParameterValue(fxIds[i]);
+    for(size_t i=0;i<envelopeIds.size();++i) envelopeParameters[i]=parameters.getRawParameterValue(envelopeIds[i]);
 }
 void DuckerProcessor::prepareToPlay(double sr,int) {
     currentSampleRate=sr;engine.prepare(sr);effects.prepare(sr);setLatencySamples(0);effectsRunning=false;
     for(auto* value:{&dryDuck,&wetPreDuck,&wetPostDuck,&fxBlend,&wetMix,&outputGain,&activeBlend}) value->reset(sr,0.02);
-    const bool enabled=fxParameters[FxEnabled]->load()>0.5f && (fxParameters[DelayEnabled]->load()>0.5f || fxParameters[ReverbEnabled]->load()>0.5f);
+    const bool enabled=fxParameters[FxEnabled]->load()>0.5f && (fxParameters[DelayEnabled]->load()>0.5f || fxParameters[ReverbEnabled]->load()>0.5f
+        || fxParameters[Sustain]->load()>0 || fxParameters[Destroy]->load()>0);
     const int target=static_cast<int>(fxParameters[DuckTarget]->load());
     const bool before=fxParameters[DuckPosition]->load()<0.5f;
     dryDuck.setCurrentAndTargetValue(!enabled || target!=1 ? 1.0 : 0.0);
@@ -80,7 +92,9 @@ double DuckerProcessor::getTailLengthSeconds() const {
     const double feedback=fxParameters[DelayFeedback]->load()*0.01;
     const double delayTail=fxParameters[DelayEnabled]->load()>0.5f ? seconds*(1+(feedback>0 ? std::ceil(std::log(0.00001)/std::log(feedback)) : 0)) : 0;
     const double reverbTail=fxParameters[ReverbEnabled]->load()>0.5f ? fxParameters[ReverbLength]->load()*2.0 : 0;
-    return delayTail+reverbTail;
+    const double destroyTail=fxParameters[Destroy]->load()>0
+        && (delayTail>0 || reverbTail>0 || fxParameters[DestroyMode]->load()>0.5f) ? .06 : 0;
+    return delayTail+reverbTail+destroyTail;
 }
 bool DuckerProcessor::isBusesLayoutSupported(const BusesLayout& buses) const {
     return buses.getMainInputChannelSet()==buses.getMainOutputChannelSet()
@@ -100,10 +114,12 @@ template<typename Sample> void DuckerProcessor::process(juce::AudioBuffer<Sample
         if(const auto points=position->getLoopPoints()) {t.loopStart=points->ppqStart;t.loopEnd=points->ppqEnd;}
     }
     engine.beginBlock(t,{amount->load(std::memory_order_relaxed)*0.01,static_cast<int>(shape->load(std::memory_order_relaxed)),
-        static_cast<int>(rate->load(std::memory_order_relaxed)),bypassed || bypass->load(std::memory_order_relaxed)>0.5f});
+        static_cast<int>(rate->load(std::memory_order_relaxed)),bypassed || bypass->load(std::memory_order_relaxed)>0.5f,
+        envelopeParameters[0]->load(std::memory_order_relaxed)*.01,envelopeParameters[1]->load(std::memory_order_relaxed)*.01,
+        envelopeParameters[2]->load(std::memory_order_relaxed)*.01});
     const auto fx=[&](FxParameter index) {return fxParameters[index]->load(std::memory_order_relaxed);};
     const bool globalBypass=bypassed || bypass->load(std::memory_order_relaxed)>0.5f;
-    const bool enabled=fx(FxEnabled)>0.5f && (fx(DelayEnabled)>0.5f || fx(ReverbEnabled)>0.5f);
+    const bool enabled=fx(FxEnabled)>0.5f && (fx(DelayEnabled)>0.5f || fx(ReverbEnabled)>0.5f || fx(Sustain)>0 || fx(Destroy)>0);
     const int target=static_cast<int>(fx(DuckTarget));
     const bool before=fx(DuckPosition)<0.5f;
     dryDuck.setTargetValue(!enabled || target!=1 ? 1.0 : 0.0);
@@ -123,6 +139,7 @@ template<typename Sample> void DuckerProcessor::process(juce::AudioBuffer<Sample
     settings.reverbSeconds=fx(ReverbLength);settings.reverbWidth=fx(ReverbWidth)*0.01;
     settings.reverbBassDb=fx(ReverbBass);settings.reverbTrebleDb=fx(ReverbTreble);
     settings.sustain=fx(Sustain)*0.01;settings.destroy=fx(Destroy)*0.01;
+    settings.parallel=fx(FxFlow)>0.5f;settings.destroyAlways=fx(DestroyMode)>0.5f;
     if(resetEffects.exchange(false)) {effects.reset();effectsRunning=false;outputPeak.store(0,std::memory_order_relaxed);}
     effects.setParameters(settings);
     double gain=visualGain.load(std::memory_order_relaxed);
@@ -173,6 +190,10 @@ void DuckerProcessor::setStateInformation(const void* data,int size) {
         for(const auto* id:fxIds) if(!state.getChildWithProperty("id",id).isValid()) {
             auto* parameter=parameters.getParameter(id);
             juce::ValueTree value{"PARAM"};value.setProperty("id",id,nullptr);
+            value.setProperty("value",juce::String(id)=="fxFlow" || juce::String(id)=="destroyMode" ? 0.0f : parameter->convertFrom0to1(parameter->getDefaultValue()),nullptr);state.addChild(value,-1,nullptr);
+        }
+        for(const auto* id:envelopeIds) if(!state.getChildWithProperty("id",id).isValid()) {
+            auto* parameter=parameters.getParameter(id);juce::ValueTree value{"PARAM"};value.setProperty("id",id,nullptr);
             value.setProperty("value",parameter->convertFrom0to1(parameter->getDefaultValue()),nullptr);state.addChild(value,-1,nullptr);
         }
         parameters.replaceState(state);resetEffects.store(true);

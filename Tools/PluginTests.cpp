@@ -113,6 +113,106 @@ template<typename Sample> void testEffectsRouting() {
     restored.parameters.getParameter("reverbLength")->setValueNotifyingHost(1);
     require(restored.getTailLengthSeconds()>=25,"Host may truncate long reverb tails");
 }
+void set(DuckerProcessor& p,const char* id,float value) {
+    auto* parameter=p.parameters.getParameter(id);require(parameter!=nullptr,"New ducker/FX control is missing");
+    parameter->setValueNotifyingHost(parameter->convertTo0to1(value));
+}
+template<typename Sample> void testEnvelopeControls() {
+    DuckerProcessor p;Host host;host.position.setIsPlaying(true);host.position.setBpm(120);p.setPlayHead(&host);
+    set(p,"amount",100);set(p,"hold",20);set(p,"recovery",50);set(p,"phaseOffset",25);
+    p.prepareToPlay(48000,127);juce::MidiBuffer midi;
+    std::vector<double> result;
+    for(int start=0;start<24000;start+=127) {
+        juce::AudioBuffer<Sample> buffer(2,std::min(127,24000-start));
+        for(int i=0;i<buffer.getNumSamples();++i) {buffer.setSample(0,i,Sample{1});buffer.setSample(1,i,Sample{1});}
+        host.position.setPpqPosition(start/24000.0);p.processBlock(buffer,midi);
+        for(int i=0;i<buffer.getNumSamples();++i) result.push_back(buffer.getSample(0,i));
+    }
+    require(std::abs(result[6000])<1e-7,"Phase does not move the pulse to a quarter cycle");
+    require(std::abs(result[10000])<1e-7,"Hold does not keep the signal ducked");
+    require(result[21000]>.999,"Recovery does not reach full level early");
+    p.setPlayHead(nullptr);
+    std::cout<<"PASS Hold, Recovery and Phase audio behavior\n";
+}
+template<typename Sample> void testFxMatrix() {
+    // Reference is a clean render. Post ducking must multiply only the selected branch;
+    // pre ducking must equal processing an already enveloped source, including nonlinear FX.
+    for(int effect=0;effect<6;++effect) for(int target=0;target<3;++target) for(int position=0;position<2;++position) {
+        DuckerProcessor routed,clean,pre;Host host;host.position.setIsPlaying(true);host.position.setBpm(120);
+        for(auto* p:{&routed,&clean,&pre}) {
+            set(*p,"fxEnabled",1);set(*p,"delayEnabled",effect==0 || effect>=4 ? 1.0f:0.0f);
+            set(*p,"reverbEnabled",effect==1 || effect>=4 ? 1.0f:0.0f);
+            set(*p,"sustain",effect==2?65.0f:0.0f);set(*p,"destroy",effect==3?80.0f:0.0f);set(*p,"destroyMode",1);
+            set(*p,"fxFlow",effect==5?0.0f:1.0f);set(*p,"delayLength",0);set(*p,"delayFeedback",20);
+            set(*p,"fxMix",100);set(*p,"amount",0);p->setPlayHead(&host);
+        }
+        set(routed,"fxMix",40);set(routed,"amount",100);set(routed,"duckTarget",static_cast<float>(target));set(routed,"duckPosition",static_cast<float>(position));
+        for(auto* p:{&routed,&clean,&pre}) p->prepareToPlay(48000,257);
+        duck::Engine envelope;envelope.prepare(48000);juce::MidiBuffer midi;
+        for(int start=0;start<48000;start+=257) {
+            const int count=std::min(257,48000-start);host.position.setPpqPosition(start/24000.0);
+            envelope.beginBlock({start/24000.0,120,true,true},{1,0,1,false});
+            juce::AudioBuffer<Sample> a(2,count),b(2,count),c(2,count);std::vector<double> gains;
+            for(int i=0;i<count;++i) {
+                const double gain=envelope.nextGain();gains.push_back(gain);
+                for(int ch=0;ch<2;++ch) {
+                    const auto x=static_cast<Sample>(.04*std::sin((start+i)*(ch==0?.071:.113)));
+                    a.setSample(ch,i,x);b.setSample(ch,i,x);c.setSample(ch,i,static_cast<Sample>(x*gain));
+                }
+            }
+            auto dry=a; routed.processBlock(a,midi);clean.processBlock(b,midi);pre.processBlock(c,midi);
+            for(int i=0;i<count;++i) for(int ch=0;ch<2;++ch) {
+                const auto gain=gains[static_cast<size_t>(i)];
+                const double wet=target==0?b.getSample(ch,i):position==0?c.getSample(ch,i):b.getSample(ch,i)*gain;
+                const double expected=.6*dry.getSample(ch,i)*(target==1?1:gain)+.4*wet;
+                require(std::abs(a.getSample(ch,i)-expected)<2e-5,"Clean/ducked FX matrix leaks or ducks the wrong path");
+            }
+        }
+        for(auto* p:{&routed,&clean,&pre}) p->setPlayHead(nullptr);
+    }
+    std::cout<<"PASS all clean/ducked routes for Delay, Reverb, Sustain, Destroy, Parallel and Serial\n";
+}
+void testNewFxModes() {
+    DuckerProcessor p;set(p,"fxFlow",1);set(p,"destroyMode",1);
+    set(p,"fxEnabled",1);set(p,"delayEnabled",0);set(p,"reverbEnabled",0);set(p,"destroy",100);set(p,"fxMix",100);set(p,"amount",0);
+    p.prepareToPlay(48000,256);juce::MidiBuffer midi;juce::AudioBuffer<double> buffer(2,24000);
+    double difference=0;
+    for(int i=0;i<24000;++i) {buffer.setSample(0,i,.1*std::sin(i*.13));buffer.setSample(1,i,.1*std::sin(i*.13));}
+    p.processBlock(buffer,midi);
+    for(int i=12000;i<24000;++i) difference+=std::abs(buffer.getSample(0,i)-.1*std::sin(i*.13));
+    require(difference>10 && p.destroyLevel.load()>.9,"Always Destroy is inaudible on sustained input without time effects");
+    require(p.getTailLengthSeconds()>=.035,"Host may truncate standalone Destroy stutters");
+    set(p,"delayEnabled",1);set(p,"reverbEnabled",1);set(p,"destroy",0);set(p,"delayFeedback",0);
+    p.prepareToPlay(48000,256);buffer.setSize(2,4800);buffer.clear();buffer.setSample(0,0,1);buffer.setSample(1,0,1);p.processBlock(buffer,midi);
+    require(buffer.getMagnitude(0,buffer.getNumSamples())>.01,"Parallel reverb waits for the quarter-note delay");
+    require(std::abs(buffer.getSample(0,0))<1e-12,"Fully wet parallel FX leaks dry audio");
+    // Missing new parameters must restore legacy behavior even on a previously edited instance.
+    auto legacy=p.parameters.copyState();
+    for(const auto* id:{"hold","recovery","phaseOffset","fxFlow","destroyMode"}) legacy.removeChild(legacy.getChildWithProperty("id",id),nullptr);
+    set(p,"hold",70);set(p,"recovery",10);set(p,"phaseOffset",75);
+    juce::MemoryBlock state;juce::AudioProcessor::copyXmlToBinary(*legacy.createXml(),state);
+    p.setStateInformation(state.getData(),static_cast<int>(state.getSize()));
+    require(p.parameters.getRawParameterValue("hold")->load()<.001 && p.parameters.getRawParameterValue("recovery")->load()>99.99
+        && p.parameters.getRawParameterValue("phaseOffset")->load()<.001,"Legacy sessions inherit edited envelope controls");
+    require(p.parameters.getRawParameterValue("fxFlow")->load()<.5 && p.parameters.getRawParameterValue("destroyMode")->load()<.5,"Legacy sessions lose Serial/Tail modes");
+    std::cout<<"PASS audible FX modes and legacy session defaults\n";
+}
+template<typename Sample> void testStandaloneSustain() {
+    DuckerProcessor p;
+    for(const auto& [id,value]:std::initializer_list<std::pair<const char*,float>>{
+        {"fxEnabled",1},{"delayEnabled",0},{"reverbEnabled",0},{"sustain",100},{"fxMix",100},{"amount",0}}) {
+        auto* parameter=p.parameters.getParameter(id);parameter->setValueNotifyingHost(parameter->convertTo0to1(value));
+    }
+    p.prepareToPlay(48000,256);juce::MidiBuffer midi;
+    juce::AudioBuffer<Sample> audio(2,48000);
+    for(int i=0;i<audio.getNumSamples();++i) {
+        audio.setSample(0,i,static_cast<Sample>(.01*std::sin(i*.13)));
+        audio.setSample(1,i,audio.getSample(0,i));
+    }
+    p.processBlock(audio,midi);
+    require(audio.getMagnitude(0,24000,24000)>.1,"Sustain is silently disabled when Delay and Reverb are off");
+    std::cout<<"PASS standalone Sustain through the actual processor\n";
+}
 template<typename Sample> bool testHostReset(const char* precision) {
     DuckerProcessor p;
     const auto set=[&](const char* id,float value) {auto* parameter=p.parameters.getParameter(id);parameter->setValueNotifyingHost(parameter->convertTo0to1(value));};
@@ -204,14 +304,14 @@ void testEqDetents(DuckerProcessor& p,juce::AudioProcessorEditor& editor) {
     std::cout<<"PASS EQ zero detents in both drag directions, continuous host automation and double-click defaults\n";
 }
 void testEffectsControls(DuckerProcessor& p,juce::AudioProcessorEditor& editor) {
-    const std::array<const char*,12> knobs{"delayLength","delayFeedback","delayBass","delayTreble","reverbLength","reverbWidth","reverbBass","reverbTreble","sustain","destroy","fxMix","output"};
+    const std::array<const char*,15> knobs{"delayLength","delayFeedback","delayBass","delayTreble","reverbLength","reverbWidth","reverbBass","reverbTreble","sustain","destroy","fxMix","output","hold","recovery","phaseOffset"};
     for(const auto* id:knobs) {
         auto* knob=dynamic_cast<juce::Slider*>(find(editor,id));require(knob!=nullptr,"Effects knob missing");
         auto* parameter=p.parameters.getParameter(id);
         knob->setValue(parameter->convertFrom0to1(.8f),juce::sendNotificationSync);
         require(std::abs(knob->getValue()-p.parameters.getRawParameterValue(id)->load())<.011,"Effects knob disconnected");
     }
-    for(const auto* id:{"duckTarget","duckPosition","delayMode","reverbType"}) {
+    for(const auto* id:{"duckTarget","duckPosition","delayMode","reverbType","fxFlow","destroyMode"}) {
         auto* choice=dynamic_cast<juce::ComboBox*>(find(editor,id));require(choice!=nullptr,"Effects selector missing");
         for(int i=1;i<=choice->getNumItems();++i) {
             choice->setSelectedId(i,juce::sendNotificationSync);
@@ -228,9 +328,9 @@ void testEffectsControls(DuckerProcessor& p,juce::AudioProcessorEditor& editor) 
         button->setToggleState(true,juce::sendNotificationSync);require(p.parameters.getRawParameterValue(id)->load()>.5f,"Effect cannot turn on");
     }
     auto* toggle=dynamic_cast<juce::TextButton*>(find(editor,"effectsToggle"));require(toggle!=nullptr,"Effects collapse missing");
-    toggle->onClick();require(editor.getHeight()==460 && !find(editor,"reverbType")->isShowing(),"Effects panel does not collapse");
+    toggle->onClick();require(editor.getHeight()==560 && !find(editor,"reverbType")->isShowing(),"Effects panel does not collapse");
     require(p.parameters.getRawParameterValue("fxEnabled")->load()>.5f,"Collapsing panel disables audio");
-    toggle->onClick();require(editor.getHeight()==800,"Effects panel does not expand");
+    toggle->onClick();require(editor.getHeight()==900,"Effects panel does not expand");
 }
 }
 
@@ -238,6 +338,9 @@ int main(int argc,char** argv) {
     juce::ScopedJuceInitialiser_GUI gui;
     try {
         testAudio<float>(); testAudio<double>();
+        testStandaloneSustain<float>();testStandaloneSustain<double>();
+        testEnvelopeControls<float>();testEnvelopeControls<double>();testNewFxModes();
+        testFxMatrix<float>();testFxMatrix<double>();
         testEffectsRouting<float>();testEffectsRouting<double>();
         testMonoAndDisabledEffects<float>();testMonoAndDisabledEffects<double>();
         const bool floatReset=testHostReset<float>("float"),doubleReset=testHostReset<double>("double");
@@ -321,8 +424,12 @@ int main(int argc,char** argv) {
         const auto firstSparks=editor->createComponentSnapshot(editor->getLocalBounds());
         require(sparkPixels(firstSparks)>20,"Sparks missing at 70%");
         save(*editor,output,"openDucker-sparks.png");
-        juce::Thread::sleep(120);
-        require(sparkPixels(editor->createComponentSnapshot(editor->getLocalBounds()),firstSparks)>20,"Sparks do not animate while the knob is held at 70%");
+        bool sparksMoved=false;
+        for(int frame=0;frame<3 && !sparksMoved;++frame) {
+            juce::Thread::sleep(120);
+            sparksMoved=sparkPixels(editor->createComponentSnapshot(editor->getLocalBounds()),firstSparks)>20;
+        }
+        require(sparksMoved,"Sparks do not animate while the knob is held at 70%");
         save(*editor,output,"openDucker-sparks-next.png");
         amount->setValue(100,juce::sendNotificationSync);
         p.parameters.getParameter("shape")->setValueNotifyingHost(1);

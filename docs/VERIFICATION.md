@@ -1,5 +1,22 @@
 # Verification
 
+## v1.2.0 algorithm and routing update
+
+Local verification on 2026-10-27, Apple Silicon macOS, JUCE 8.0.9:
+
+- Release AU and VST3 builds pass; both bundle signatures verify and report version 1.2.0.
+- CTest passes core, effects and native plugin suites (3/3). ASan/UBSan passes both DSP suites (2/2).
+- The built VST3 passes pluginval 1.0.4 at strictness level 5.
+- 72 actual-processor routing cases cover Dry/Wet/Both × Before/After across Delay, Reverb, Sustain, Always Destroy, Parallel and Serial in float and double. They compare output samples against clean and pre-enveloped reference renders.
+- New regressions reproduced standalone Sustain being skipped and serial tail estimates excluding the delay. Both pass after fixes. Standalone Destroy is audible on continuous input and reports its short stutter tail to hosts. Parallel reverb starts before the first delay repeat; fully wet processing does not leak the source.
+- Hold, Recovery and Phase move/shape the actual audio envelope. Core checks cover buffer partition invariance at 44.1–192 kHz, step automation, and continuously automated Phase at block sizes 1, 16, 64 and 256. Automation regressions caught a phase-sweep click and a one-sample-block stall; both were fixed.
+- New controls are exercised in the native editor and round-trip through session state. Missing new controls restore legacy envelope/Serial/Tail settings, even on a previously edited processor. Existing parameter IDs and version hints remain unchanged.
+- The native editor capture was inspected at 1080 × 1350. A pre-existing intermittent spark-frame comparison now allows up to three frames to observe movement, retaining its original pixel threshold.
+- Independent review and focused re-review found no remaining actionable issue after the automation and Destroy-tail fixes.
+- Release publisher tests pass (11/11). The tagged release workflow also builds and validates macOS universal and native Windows x64 before publishing packages.
+
+These are offline audio renders, native control tests and plugin-host validation. No commercial-DAW listening session is claimed. Clean routing means free of the ducking envelope; effects can still color or amplify the wet branch.
+
 ## Effects stage and animated editor
 
 Local verification on 2026-10-21, Apple Silicon macOS, JUCE 8.0.9:

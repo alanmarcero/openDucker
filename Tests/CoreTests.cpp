@@ -21,8 +21,48 @@ std::vector<double> render(int blockSize, double sr = 48000, double bpm = 120, d
     return out;
 }
 
+void timingControlTests() {
+    for(double sr:{44100.,48000.,96000.,192000.}) {
+        std::vector<double> reference;
+        for(int block:{1,127,4096}) {
+            duck::Engine e;e.prepare(sr);std::vector<double> output;
+            for(int start=0;start<static_cast<int>(sr);start+=block) {
+                e.beginBlock({start*2/sr,120,true,true},{1,2,1,false,.4,.3,.25});
+                for(int i=0;i<std::min(block,static_cast<int>(sr)-start);++i) output.push_back(e.nextGain());
+            }
+            if(reference.empty()) reference=output;
+            else for(size_t i=0;i<output.size();++i) near(output[i],reference[i],1e-11,"Envelope controls depend on block size");
+        }
+    }
+    for(int control=0;control<3;++control) {
+        duck::Engine e;e.prepare(48000);duck::Parameters p{1,0,1,false,.4,.3,0};
+        double previous=0,largest=0;
+        for(int start=0;start<24000;start+=64) {
+            if(start==12032) {if(control==0) p.hold=.8;else if(control==1) p.recovery=.02;else p.phaseOffset=.75;}
+            e.beginBlock({start/24000.0,120,true,true},p);
+            for(int i=0;i<64;++i) {
+                const double gain=e.nextGain();
+                if(start>=12032 && start<12544) largest=std::max(largest,std::abs(gain-previous));
+                require(std::isfinite(gain) && gain>=0 && gain<=1,"Envelope controls produce invalid gain");previous=gain;
+            }
+        }
+        std::cout<<"Control "<<control<<" largest automation step="<<largest<<'\n';
+        require(largest<.02,"Envelope control automation clicks");
+    }
+    for(int block:{1,16,64,256}) {
+        duck::Engine e;e.prepare(48000);double sum=0,peak=0;
+        for(int start=0;start<48000;start+=block) {
+            e.beginBlock({start/24000.0,120,true,true},{1,0,1,false,0,1,start/48000.0});
+            for(int i=0;i<std::min(block,48000-start);++i) {const auto gain=e.nextGain();sum+=gain;peak=std::max(peak,gain);}
+        }
+        require(peak>.8 && sum/48000>.2,"Continuous timing automation freezes or suppresses gain at small block sizes");
+    }
+    std::cout<<"PASS envelope control partitioning, sample rates and automation\n";
+}
+
 int main() {
     try {
+        timingControlTests();
         const auto reference = render(1);
         for (int beat=0; beat<4; ++beat) near(reference[static_cast<size_t>(beat*24000)], 0, 1e-12, "Beat minimum is late");
         near(reference[12000], 0.504526999, 0.001, "Half-beat recovery is wrong");

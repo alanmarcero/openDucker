@@ -209,6 +209,16 @@ void resetHistoryTests() {
  }
  std::cout<<"PASS reset discards every stale buffer and matches fresh processing\n";
 }
+void serialTailTests() {
+ duck::Effects fx; fx.prepare(48000); duck::EffectsParameters p;
+ p.delaySeconds=2; p.feedback=0; p.reverbSeconds=6; p.destroy=1; fx.setParameters(p);
+ near(fx.tailSeconds(),8,.001,"Serial tail estimate omits the delay before the reverb");
+ for(int n=0;n<3*48000;++n) {
+  fx.process(n==0?duck::Stereo{1,1}:duck::Stereo{},n==0?1:0);
+  near(fx.destroyActivity(),0,1e-12,"Destroy starts before the serial chain's final five seconds");
+ }
+ std::cout<<"PASS serial delay plus reverb tail timing\n";
+}
 void robustnessTests() {
  for(double sr:{44100.,48000.,96000.,192000.}) {
   duck::Effects fx; fx.prepare(sr); duck::EffectsParameters p;
@@ -241,6 +251,7 @@ int main(int argc,char** argv) { try {
   if(test=="short-destroy") shortDestroyTests();
   else if(test=="mono-history") monoHistoryTests();
   else if(test=="reset-history") resetHistoryTests();
+  else if(test=="serial-tail") serialTailTests();
   else require(false,"Unknown test group");
- } else { delayTests(); automationTests(); eqTests(); reverbTests(); sustainTests(); destroyTests(); shortDestroyTests(); monoHistoryTests(); resetHistoryTests(); robustnessTests(); }
+ } else { serialTailTests(); delayTests(); automationTests(); eqTests(); reverbTests(); sustainTests(); destroyTests(); shortDestroyTests(); monoHistoryTests(); resetHistoryTests(); robustnessTests(); }
  } catch(const std::exception& e) { std::cerr<<"FAIL: "<<e.what()<<'\n'; return 1; } }

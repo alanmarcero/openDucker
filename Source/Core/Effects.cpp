@@ -125,13 +125,15 @@ void Effects::setParameters(const EffectsParameters& p) noexcept {
  for(auto& r:reverbs) r.configure(rate,parameters.reverbSeconds,!initialized);
  makeupTarget=std::pow(10.0,1.2*parameters.sustain); compressionExponentTarget=1-1/(1+7*parameters.sustain);
  if(!initialized) {
+  parallelMix=parameters.parallel?1:0;
   makeup=makeupTarget; compressionExponent=compressionExponentTarget;
   delayMix=parameters.delayEnabled?1:0; reverbMix=parameters.reverbEnabled?1:0;
   feedback=parameters.feedback; pingPong=parameters.pingPong?1:0; width=parameters.reverbWidth;
   sustain=parameters.sustain; destroy=parameters.destroy; presetMix={}; presetMix[static_cast<size_t>(parameters.reverbType)]=1;
  }
  const double delayTail=parameters.delaySeconds*(parameters.feedback>0?1+std::log(.001)/std::log(parameters.feedback):1);
- tailEstimate=std::max(parameters.delayEnabled?delayTail:0,parameters.reverbEnabled?parameters.reverbSeconds:0)*(1+.4*parameters.sustain);
+ const double delayLength=parameters.delayEnabled?delayTail:0, reverbLength=parameters.reverbEnabled?parameters.reverbSeconds:0;
+ tailEstimate=(parameters.parallel?std::max(delayLength,reverbLength):delayLength+reverbLength)*(1+.4*parameters.sustain);
  // Short tails need a shorter phrase hold and attack so Destroy acts before their audio has ended.
  quietHold=std::min(.08,tailEstimate*.1);
  const double attackSeconds=std::max(1/rate,std::min(.01,tailEstimate*.05));
@@ -198,7 +200,7 @@ Stereo Effects::distort(Stereo input,double sourcePeak) noexcept {
  else if(sourcePeak<.00003162277660168379) { quietSeconds+=1/rate; if(quietSeconds>=quietHold) sourceActive=false; }
  const double window=std::min(5.0,tailEstimate),start=tailEstimate-window;
  const double ramp=window>0?std::clamp((quietSeconds-start)/std::min(1.0,window),0.0,1.0):0;
- const double target=phraseSeen&&!sourceActive?destroy*ramp*ramp*(3-2*ramp):0;
+ const double target=parameters.destroyAlways?destroy:(phraseSeen&&!sourceActive?destroy*ramp*ramp*(3-2*ramp):0);
  activity=lerp(activity,target,target>activity?destroyAttackSmoothing:activitySmoothing);
  if(activity<1e-12) activity=0;
  const double peak=std::max(std::abs(input.left),std::abs(input.right));
@@ -241,8 +243,14 @@ Stereo Effects::process(Stereo input,double sourcePeak) noexcept {
  delayMix=lerp(delayMix,parameters.delayEnabled?1:0,smoothing);
  reverbMix=lerp(reverbMix,parameters.reverbEnabled?1:0,smoothing);
  // Warm stages preserve valid current tails across bypass fades and avoid clearing large buffers on the audio thread.
- input=mix(input,delay(input),delayMix);
- input=mix(input,reverb(input),reverbMix);
+ parallelMix=lerp(parallelMix,parameters.parallel?1:0,smoothing);
+ const auto delayed=delay(input);
+ const auto reverberated=reverb(mix(input,delayed,delayMix*(1-parallelMix)));
+ const auto serial=mix(mix(input,delayed,delayMix),reverberated,reverbMix);
+ const double direct=(1-delayMix)*(1-reverbMix);
+ const Stereo parallel{delayMix*delayed.left+reverbMix*reverberated.left+direct*input.left,
+                       delayMix*delayed.right+reverbMix*reverberated.right+direct*input.right};
+ input=mix(serial,parallel,parallelMix);
  return distort(compress(input),sourcePeak);
 }
 double Effects::tailSeconds() const noexcept { return tailEstimate; }

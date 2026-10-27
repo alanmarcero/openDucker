@@ -40,7 +40,7 @@ private:
     duck::Effects effects;
     enum FxParameter { FxEnabled, DuckTarget, DuckPosition, FxMix, DelayEnabled, DelayLength,
         DelayFeedback, DelayBass, DelayTreble, DelayMode, ReverbEnabled, ReverbType,
-        ReverbLength, ReverbWidth, ReverbBass, ReverbTreble, Sustain, Destroy, Output, FxCount };
+        ReverbLength, ReverbWidth, ReverbBass, ReverbTreble, Sustain, Destroy, Output, FxFlow, DestroyMode, FxCount };
     std::array<std::atomic<float>*,FxCount> fxParameters{};
     juce::SmoothedValue<double> dryDuck, wetPreDuck, wetPostDuck, fxBlend, wetMix, outputGain, activeBlend;
     std::atomic<bool> resetEffects{false};
@@ -50,5 +50,6 @@ private:
     std::atomic<float>* shape=nullptr;
     std::atomic<float>* rate=nullptr;
     std::atomic<float>* bypass=nullptr;
+    std::array<std::atomic<float>*,3> envelopeParameters{};
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DuckerProcessor)
 };
