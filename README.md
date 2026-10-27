@@ -1,12 +1,14 @@
 # openDucker
 
-![DJ Duck at the decks](assets/openDucker-hero.png)
+[Install with OpenVST Manager](https://github.com/alanmarcero/alan-m-OpenVSTManager/releases/latest)
 
 **Find your bounce.** One knob for rhythmic ducking, four recovery slopes, and a clock locked to your host's musical position. No sidechain routing needed.
 
 [Download](https://github.com/alanmarcero/openDucker/releases/latest) · [OpenVST Manager](https://github.com/alanmarcero/alan-m-OpenVSTManager) · [Timing design](docs/superpowers/specs/2026-10-21-open-ducker-design.md)
 
-![The actual openDucker native editor](assets/analog-cyber-preview.png)
+![openDucker native editor](assets/native-ui.png)
+
+*Captured from the released v1.1.0 VST3 editor. [Capture details and provenance](docs/SCREENSHOTS.md).*
 
 ## Make it bounce
 
@@ -45,7 +47,12 @@ See the [JUCE PositionInfo documentation](https://docs.juce.com/master/classjuce
 
 ## Install
 
-Use [OpenVST Manager](https://github.com/alanmarcero/alan-m-OpenVSTManager/releases/latest), or extract the release ZIP and copy the bundle into your DAW's plugin folder:
+1. Download and install [OpenVST Manager](https://github.com/alanmarcero/alan-m-OpenVSTManager/releases/latest) for macOS or Windows.
+2. Open the manager and refresh the catalog.
+3. Choose **openDucker**, select **VST3** (or **AU** on macOS), and install.
+4. Rescan plugins in your DAW. If you chose a custom install folder, add it to the DAW's search paths.
+
+For manual installation, extract your platform ZIP from [v1.1.0 Releases](https://github.com/alanmarcero/openDucker/releases/tag/v1.1.0) and copy the entire bundle into your DAW's plugin folder:
 
 | Platform | Formats | Typical user folder |
 | --- | --- | --- |
