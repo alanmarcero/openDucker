@@ -32,7 +32,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout DuckerProcessor::layout() {
     choice("duckPosition","Ducking position",{"Before FX","After FX"},1);
     number("fxMix","FX mix",0,100,30,"%");
     toggle("delayEnabled","Delay enabled",true);
-    choice("delayLength","Delay length",{"1/32","1/16","1/8","1/8 dotted","1/4","1/4 dotted","1/2","1 bar"},4);
+    choice("delayLength","Delay length",{"1/32","1/16","1/8","1/8 dotted","1/4","1/4 dotted","1/2","1 bar"},3);
     number("delayFeedback","Delay feedback",0,95,35,"%");
     number("delayBass","Delay bass",-12,12,0,"dB");
     number("delayTreble","Delay treble",-12,12,0,"dB");

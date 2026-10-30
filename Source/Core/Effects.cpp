@@ -16,6 +16,12 @@ Stereo mix(Stereo a,Stereo b,double t) noexcept { return {lerp(a.left,b.left,t),
 
 // Reset validity instead of touching storage: audio-thread reset cost must not grow with sample rate.
 void Effects::Line::clear() noexcept { position=valid=0; }
+double Effects::Line::read(double delay) const noexcept {
+ double at=static_cast<double>(position)-delay;
+ if(at<0) at+=static_cast<double>(samples.size());
+ const size_t first=static_cast<size_t>(at),next=first+1==samples.size()?0:first+1;
+ return lerp(first<valid?samples[first]:0,next<valid?samples[next]:0,at-static_cast<double>(first));
+}
 
 void Effects::Shelf::configure(double rate,double hz,double db,bool high,bool immediate) noexcept {
  // RBJ shelves: reciprocal boost/cut responses, with a gentle slope of one.
@@ -47,26 +53,39 @@ void Effects::Shelf::clear() noexcept { z1={}; z2={}; coefficients=target; }
 void Effects::Reverb::prepare(double rate,int type) {
  // Incommensurate paths and allpass diffusion give each space its own density and texture.
  constexpr double delays[3][8]={
-  {.0173,.0199,.0233,.0277,.0311,.0347,.0383,.0419},
-  {.0311,.0377,.0437,.0533,.0617,.0713,.0799,.0893},
-  {.0113,.0137,.0179,.0211,.0253,.0299,.0343,.0397}};
- constexpr double diff[3][4]={ {.0031,.0047,.0067,.0091}, {.0043,.0061,.0097,.0137}, {.0023,.0037,.0059,.0083} };
- for(size_t i=0;i<8;++i) lines[i].samples.assign(static_cast<size_t>(std::max(1.0,std::round(delays[type][i]*rate))),0);
- for(size_t i=0;i<4;++i) diffusers[i].samples.assign(static_cast<size_t>(std::max(1.0,std::round(diff[type][i]*rate))),0);
- diffusion=type==0?.58:type==1?.68:.76;
- damping=std::exp(-2*pi*(type==0?6500:type==1?9000:14000)/rate);
+  {.0193,.0229,.0263,.0307,.0347,.0383,.0431,.0479},
+  {.0331,.0409,.0487,.0571,.0661,.0751,.0857,.0967},
+  {.0157,.0181,.0211,.0241,.0277,.0313,.0353,.0397}};
+ // Series allpasses diffuse each transient before the delay lines.
+ constexpr double diff[3][8]={
+  {.0019,.0031,.0047,.0067,.0023,.0037,.0053,.0071},
+  {.0041,.0067,.0101,.0149,.0047,.0073,.0109,.0157},
+  {.0013,.0023,.0037,.0059,.0017,.0029,.0043,.0061}};
+ depth=(type==0?.0003:type==1?.0006:.0004)*rate;
+ for(size_t i=0;i<8;++i) {
+  lengths[i]=std::max(1.0,std::round(delays[type][i]*rate));
+  lines[i].samples.assign(static_cast<size_t>(lengths[i]+depth)+2,0);
+  phaseSteps[i]=2*pi*(.1+.07*static_cast<double>(i))/rate;
+  diffusers[i].samples.assign(static_cast<size_t>(std::max(1.0,std::round(diff[type][i]*rate))),0);
+ }
+ diffusion=type==0?.6:type==1?.7:.75;
+ highRatio=type==0?.4:type==1?.5:.75;
  clear();
 }
 void Effects::Reverb::configure(double rate,double seconds,bool immediate) noexcept {
  for(size_t i=0;i<8;++i) {
-  targetGains[i]=std::pow(10.0,-3*static_cast<double>(lines[i].samples.size())/(rate*seconds));
-  if(immediate) gains[i]=targetGains[i];
+  const double loss=-3*(lengths[i]+.5*depth)/(rate*seconds);
+  targetGains[i]=std::pow(10.0,loss);
+  // DC decays over Length; Nyquist decays over highRatio times Length.
+  const double ratio=std::pow(10.0,loss*(1/highRatio-1));
+  targetPoles[i]=(1-ratio)/(1+ratio);
+  if(immediate) { gains[i]=targetGains[i]; poles[i]=targetPoles[i]; }
  }
 }
 Stereo Effects::Reverb::process(Stereo input,double smoothing) noexcept {
  std::array<double,2> diffuse{input.left,input.right};
- for(size_t i=0;i<4;++i) {
-  double& x=diffuse[i%2]; auto& line=diffusers[i]; const double delayed=line.read();
+ for(size_t i=0;i<8;++i) {
+  double& x=diffuse[i/4]; auto& line=diffusers[i]; const double delayed=line.read();
   const double y=delayed-diffusion*x; line.write(clean(x+diffusion*y)); x=y;
  }
  std::array<double,8> y{};
@@ -74,23 +93,25 @@ Stereo Effects::Reverb::process(Stereo input,double smoothing) noexcept {
  constexpr std::array<double,8> rightSigns{1,-1,1,-1,-1,1,-1,1};
  constexpr std::array<double,8> injectSigns{1,1,-1,-1,1,1,-1,-1};
  for(size_t i=0;i<8;++i) {
-  const double x=lines[i].read();
-  // Mild damping keeps the midband RT60 calibrated while progressively softening the top end.
-  dampingState[i]=clean(lerp(x,dampingState[i],damping));
-  y[i]=.999*x+.001*dampingState[i]; sum+=y[i];
+  // Delay modulation prevents fixed resonant modes in long tails.
+  const double x=lines[i].read(lengths[i]+.5*depth*(1+std::sin(phases[i])));
+  phases[i]+=phaseSteps[i]; if(phases[i]>2*pi) phases[i]-=2*pi;
+  gains[i]=lerp(gains[i],targetGains[i],smoothing); poles[i]=lerp(poles[i],targetPoles[i],smoothing);
+  dampingState[i]=clean(lerp(x,dampingState[i],poles[i]));
+  y[i]=gains[i]*dampingState[i]; sum+=y[i];
   left+=x; right+=x*rightSigns[i];
-  gains[i]=lerp(gains[i],targetGains[i],smoothing);
  }
  const double mid=(diffuse[0]+diffuse[1])*.5,side=(diffuse[0]-diffuse[1])*.5;
  for(size_t i=0;i<8;++i) {
   const double injection=(mid*injectSigns[i]+side*rightSigns[i])*.3535533905932738;
   // Householder feedback is orthogonal; scalar per-line losses set RT60 without positive EQ feedback.
-  lines[i].write(clean(injection+gains[i]*(y[i]-.25*sum)));
+  lines[i].write(clean(injection+y[i]-.25*sum));
  }
  return {left*.3535533905932738,right*.3535533905932738};
 }
 void Effects::Reverb::clear() noexcept {
- for(auto& l:lines) l.clear(); for(auto& l:diffusers) l.clear(); dampingState={}; gains=targetGains;
+ for(auto& l:lines) l.clear(); for(auto& l:diffusers) l.clear(); dampingState={}; gains=targetGains; poles=targetPoles;
+ for(size_t i=0;i<8;++i) phases[i]=pi*.25*static_cast<double>(i);
 }
 
 void Effects::prepare(double sampleRate) {

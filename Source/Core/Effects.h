@@ -28,6 +28,7 @@ private:
   std::vector<double> samples;
   size_t position=0,valid=0;
   double read() const noexcept { return valid==samples.size()?samples[position]:0; }
+  double read(double delay) const noexcept;
   void write(double x) noexcept {
    samples[position]=x;
    if(valid<samples.size()) ++valid;
@@ -44,9 +45,9 @@ private:
  };
  struct Reverb {
   std::array<Line,8> lines;
-  std::array<Line,4> diffusers;
-  std::array<double,8> gains{}, targetGains{}, dampingState{};
-  double damping=0, diffusion=.65;
+  std::array<Line,8> diffusers;
+  std::array<double,8> lengths{}, gains{}, targetGains{}, poles{}, targetPoles{}, dampingState{}, phases{}, phaseSteps{};
+  double diffusion=.65, highRatio=.5, depth=0;
   void prepare(double rate,int type);
   void configure(double rate,double seconds,bool immediate) noexcept;
   Stereo process(Stereo input,double smoothing) noexcept;
