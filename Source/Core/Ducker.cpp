@@ -25,6 +25,13 @@ double envelope(double phase, int shape, double edge, double hold, double recove
     }
 }
 
+double envelopeGain(double shaped, double amount) noexcept {
+    const double reduction=1-shaped;
+    const double depth=std::min(1.0,2*amount);
+    const double extra=1-std::max(0.0,2*amount-1)*reduction;
+    return (1-depth*reduction)*extra*extra*extra;
+}
+
 void Engine::prepare(double sr) noexcept {
     *this=Engine{};
     sampleRate=std::isfinite(sr) && sr>=8000 && sr<=768000 ? sr : 48000;
@@ -114,11 +121,11 @@ double Engine::nextGain() noexcept {
             shaped+=rates[r]*value; previousShaped+=rates[r]*previousValue;
         }
     }
-    double gain=active ? 1-amount*(1-shaped) : 1;
+    double gain=active ? envelopeGain(shaped,amount) : 1;
     if(timingChanged) {
         // Cancel only the parameter-induced jump, then remove that correction over 5 ms.
         // Musical motion continues even when automation arrives every sample.
-        timingCorrection+=amount*(previousShaped-shaped);
+        timingCorrection+=envelopeGain(previousShaped,amount)-envelopeGain(shaped,amount);
         timingCorrectionStep=timingCorrection/rampLength;
         timingTransitionLeft=rampLength; timingChanged=false;
     }

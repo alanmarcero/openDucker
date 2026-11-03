@@ -11,6 +11,7 @@ struct Transport {
 struct Parameters { double amount=0.65; int shape=0, rate=1; bool bypass=false; double hold=0, recovery=1, phaseOffset=0; };
 
 double envelope(double phase, int shape, double edge, double hold=0, double recovery=1) noexcept;
+double envelopeGain(double shaped, double amount) noexcept;
 
 class Engine {
 public:

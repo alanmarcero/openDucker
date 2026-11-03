@@ -119,7 +119,7 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p):AudioProcessorEditor(p),owner(p),
     amount.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);amount.setTextBoxStyle(juce::Slider::NoTextBox,false,0,0);
     amount.setRotaryParameters(juce::MathConstants<float>::pi*1.25f,juce::MathConstants<float>::pi*2.75f,true);
     amount.setDoubleClickReturnValue(true,65);amount.setWantsKeyboardFocus(true);
-    amount.setTooltip("Ducking depth. 0% disables ducking; FX remain active. 100% reaches silence at each pulse. Double-click resets to 65%.");
+    amount.setTooltip("Ducking depth. 0% disables ducking; FX remain active. 50% matches the original maximum; 100% gives extreme pumping. Double-click resets to 65%.");
     addAndMakeVisible(amount);
     amountAttachment=std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.parameters,"amount",amount);
     const std::array<const char*,3> envelopeIds{"hold","recovery","phaseOffset"};
@@ -290,7 +290,7 @@ void DuckerEditor::paint(juce::Graphics& g) {
     juce::Path curve;
     for(int i=0;i<=652;++i) {
         const auto phase=static_cast<double>(i)/652;
-        const auto gain=bypassed ? 1.0 : 1-depth*(1-duck::envelope(phase-offset-std::floor(phase-offset),slope,edge,hold,recovery));
+        const auto gain=bypassed ? 1.0 : duck::envelopeGain(duck::envelope(phase-offset-std::floor(phase-offset),slope,edge,hold,recovery),depth);
         const float x=inner.getX()+static_cast<float>(phase)*inner.getWidth();
         const float y=inner.getBottom()-static_cast<float>(gain)*inner.getHeight();
         if(i==0) curve.startNewSubPath(x,y);else curve.lineTo(x,y);
@@ -301,5 +301,5 @@ void DuckerEditor::paint(juce::Graphics& g) {
         g.setColour(yellow.withAlpha(0.85f));g.drawVerticalLine(juce::roundToInt(x),inner.getY()-3,inner.getBottom()+3);
     }
     text(g,"Ducking envelope",{34,526,220,20},12,muted);
-    text(g,"DJ Duck / openDucker   /   v1.2.0",{350,526,240,20},12,muted,juce::Justification::centredRight);
+    text(g,"DJ Duck / openDucker   /   v" JucePlugin_VersionString,{350,526,240,20},12,muted,juce::Justification::centredRight);
 }

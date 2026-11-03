@@ -13,11 +13,11 @@
 ## Make it bounce
 
 1. Insert openDucker on a sustained synth, bass, pad, or bus and start your DAW's transport.
-2. Turn **Amount** up for deeper pumping. 0% disables ducking (FX can still run); 100% reaches silence at every pulse.
+2. Turn **Amount** up for deeper pumping. 0% disables ducking (FX can still run); 50% matches the original maximum. Above 50%, the signal stays quieter through more of the cycle, with 100% giving extreme pumping.
 3. Pick **Smooth**, **Punch**, **Snap**, or **Swell** for a different recovery slope.
 4. Pick a note length: 1/2, 1/4, 1/8, 1/16, 1/4 triplet, or 1/8 dotted. The default is a quarter note.
 
-**Hold** keeps the signal at maximum ducking for 0–80% of the recovery region. **Recovery** sets how much of the remaining region is used to return to full volume (2–100%). **Phase** delays the pulse within the selected cycle; 50% places it halfway between beats. The graph follows all three. Their defaults retain the original envelope.
+**Hold** keeps the signal at maximum ducking for 0–80% of the recovery region. **Recovery** sets how much of the remaining region is used to return to full volume (2–100%). **Phase** delays the pulse within the selected cycle; 50% places it halfway between beats. The graph follows all three. Their defaults use no hold or phase offset and recover across the full cycle.
 
 Double-click Amount to reset to 65%. Use the **On** button to bypass the entire plugin. All audio controls support host automation and session recall. Mono and stereo, 32-bit and 64-bit audio processing are supported.
 
@@ -35,7 +35,7 @@ Turn **FX On** to enable effects. New instances use **Parallel** flow: Delay and
 
 Delay and Reverb have individual bypass switches. With both stages off, Sustain and Always Destroy can still process the source. With all four effects inactive, the plugin returns to its original ducking behavior. EQ, parallel FX and Sustain can raise output peaks; use **Output** and the peak meter to set the final level. Double-click any small knob to restore its default. The four EQ knobs snap to zero while dragging; host automation retains fine adjustments.
 
-Sessions saved before v1.2.0 keep Serial flow, Tail Destroy, and the original ducking envelope. All new controls support host automation and session recall.
+Sessions saved before v1.2.0 keep Serial flow, Tail Destroy, and the original Hold, Recovery and Phase defaults. All new controls support host automation and session recall. In v1.3.0, Amount has a stronger range, so saved settings and automation duck more deeply at the same values. Halve previous Amount values to reproduce the old ducking strength (old 100% = new 50%).
 
 
 ## Timing you can inspect

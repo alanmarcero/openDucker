@@ -1,5 +1,18 @@
 # Verification
 
+## v1.3.0 expanded Amount range
+
+Local verification on 2026-11-03, Apple Silicon macOS, JUCE 8.0.9:
+
+- Release AU and VST3 builds pass and report version 1.3.0. Both bundle signatures verify; VST3 passes pluginval 1.0.4 at strictness level 5.
+- CTest passes core, effects and native plugin suites (3/3). ASan/UBSan passes both DSP suites (2/2). Release publisher tests pass (11/11).
+- A regression failed against the old implementation, then passed with the new mapping: 50% matches the original full-depth envelope sample-for-sample for all four slopes. Increasing Amount progressively reduces gain; 0% stays transparent.
+- At 100% Amount, Smooth gain halfway through a 120 BPM quarter-note cycle is 0.064794482 (about -23.77 dB), versus 0.504527 (about -5.94 dB) at the old maximum. Float and double processor tests verify the deeper ducking in actual output samples.
+- Existing timing, loop, automation, session recall, mono, bypass and FX routing tests pass with the expanded range. Periodic continuity checks cover both the old maximum at 50% and the new maximum at 100%; the latter's steeper 3 ms pre-duck ramp stays below 0.02 gain change per sample at 48 kHz.
+- The native editor capture was inspected at 1080 × 1350. The graph uses the same gain mapping as the audio engine. Both displayed version labels use the build version.
+
+These checks use offline audio renders, native control tests and plugin-host validation. No commercial-DAW listening session is claimed. Saved Amount values intentionally use the stronger range; halving old values reproduces the old steady-state ducking strength. The tagged release workflow also validates macOS universal and Windows x64 packages before publication.
+
 ## v1.2.0 algorithm and routing update
 
 Local verification on 2026-10-27, Apple Silicon macOS, JUCE 8.0.9:

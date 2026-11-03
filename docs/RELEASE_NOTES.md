@@ -1,13 +1,12 @@
-openDucker v1.2.0 improves FX audibility, makes routing explicit, and adds ducker envelope controls.
+openDucker v1.3.0 expands the Amount control so useful ducking sits lower on the dial and 100% delivers extreme pumping.
 
-- Add Hold, Recovery and Phase controls with a live envelope preview and click-suppressed automation.
-- Add Parallel FX flow so delay echoes and immediate reverb remain audible. Serial flow remains available.
-- Fix Sustain being silently skipped with Delay and Reverb off.
-- Add Always Destroy for continuous audio and standalone use. Tail mode retains phrase-end processing.
-- Correct the serial delay-plus-reverb tail estimate and report standalone Destroy's stutter tail to hosts.
-- Show whether the dry signal and FX are clean, ducked before FX, or ducked after FX.
-- Preserve older sessions' Serial/Tail modes, envelope defaults and existing automation parameter IDs.
-- Verify every Dry/Wet/Both × Before/After combination for each FX stage and both flows in float and double precision.
+- Keep the 0–100 control, with the previous maximum now at 50%.
+- Above 50%, progressively deepen the recovery curve. At 100%, Smooth is about 24 dB down halfway through the beat, compared with about 6 dB at the previous maximum.
+- Update the live envelope preview and Amount tooltip to match the stronger range. Zero Amount remains transparent; Hold, Recovery, Phase and host sync still work across the full range.
+- Include the reverb improvements made since v1.2.0: denser diffusion, modulated delays and stronger high-frequency damping.
+- Default new delay instances to 1/8 dotted so repeats fall between duck pulses. Existing sessions keep their saved delay length.
+
+Saved Amount settings and automation retain their values and will sound stronger. Halve previous Amount values to reproduce the old ducking strength; the new default remains 65%.
 
 Install the macOS universal VST3/AU or Windows x64 VST3 ZIP, or update through OpenVST Manager. Close your DAW before replacing the plugin and rescan afterward. SHA256SUMS.txt covers both archives. macOS bundles are ad-hoc signed; Windows binaries have no publisher certificate.
 
