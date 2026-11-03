@@ -13,7 +13,7 @@
 ## Make it bounce
 
 1. Insert openDucker on a sustained synth, bass, pad, or bus and start your DAW's transport.
-2. Turn **Amount** up for deeper pumping. 0% disables ducking (FX can still run); 50% matches the original maximum. Above 50%, the signal stays quieter through more of the cycle, with 100% giving extreme pumping.
+2. Turn **Amount** up for deeper pumping. 0% disables ducking (FX can still run); 50% matches the original maximum. Above 50%, the signal stays quieter through more of the cycle. At 100%, Smooth is about 18 dB down halfway through the beat.
 3. Pick **Smooth**, **Punch**, **Snap**, or **Swell** for a different recovery slope.
 4. Pick a note length: 1/2, 1/4, 1/8, 1/16, 1/4 triplet, or 1/8 dotted. The default is a quarter note.
 

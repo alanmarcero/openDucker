@@ -74,7 +74,7 @@ void amountRangeTests() {
                 if(amount==0) near(gain,1,0,"Zero Amount is not transparent");
                 if(amount==0.5) near(gain,duck::envelope(i/24000.0,shape,0.006),1e-12,"50% does not match the original maximum ducking");
                 if(shape==0 && amount==1 && i==12000)
-                    require(gain>.06 && gain<.07,"Maximum Smooth ducking is not about 24 dB down halfway through the beat");
+                    require(gain>.12 && gain<.13,"Maximum Smooth ducking is not about 18 dB down halfway through the beat");
             }
             std::cout<<"Shape "<<shape<<" amount="<<amount*100<<" cycle RMS="<<std::sqrt(energy/24000)<<'\n';
         }
@@ -88,7 +88,7 @@ int main() {
         timingControlTests();
         const auto reference = render(1);
         for (int beat=0; beat<4; ++beat) near(reference[static_cast<size_t>(beat*24000)], 0, 1e-12, "Beat minimum is late");
-        near(reference[12000], 0.064794482, 0.000001, "Half-beat recovery is wrong");
+        near(reference[12000], 0.128426166, 0.000001, "Half-beat recovery is wrong");
         for (int block : {7,64,511,1024,4096}) {
             const auto actual = render(block);
             for (size_t i=0; i<actual.size(); ++i) near(actual[i], reference[i], 2e-12, "Buffer size changes timing");
@@ -130,7 +130,7 @@ int main() {
         loop.beginBlock({1.25+1.0/24000,120,true,true,true,1.25,4.0},{1,0,1,false});
         for(int i=0;i<96;++i) loop.nextGain();
         near(loop.phase(),0.254,1e-11,"Loop transition delays phase");
-        near(loop.nextGain(),std::pow(duck::envelope(0.25+97.0/24000,0,0.006),4),1e-11,"Loop transition never completes");
+        near(loop.nextGain(),std::pow(duck::envelope(0.25+97.0/24000,0,0.006),3),1e-11,"Loop transition never completes");
         duck::Engine tempo; tempo.prepare(48000);
         tempo.beginBlock({0,120,true,true},{1,0,1,false});
         for(int i=0;i<12000;++i) tempo.nextGain();
@@ -142,7 +142,7 @@ int main() {
         const double beforeTempo=tempoEdge.nextGain();
         tempoEdge.beginBlock({0.997,60,true,true},{1,0,1,false});
         const double afterTempo=tempoEdge.nextGain();
-        near(afterTempo,0.0625,1e-12,"Tempo width is not smoothed independently of phase");
+        near(afterTempo,0.125,1e-12,"Tempo width is not smoothed independently of phase");
         require(std::abs(afterTempo-beforeTempo)<0.012,"Tempo change clicks in pre-duck ramp");
         for(int blockSize : {1,64,240,511,4096}) for(int rate : {1,5}) {
             duck::Engine partitioned; partitioned.prepare(48000);

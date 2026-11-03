@@ -1,5 +1,13 @@
 # Verification
 
+## v1.3.1 maximum Amount adjustment
+
+Local verification on 2026-11-03, Apple Silicon macOS, JUCE 8.0.9:
+
+- At 100% Amount, Smooth midpoint gain is 0.128426166 (about -17.83 dB) at 120 BPM, replacing v1.3.0's -23.77 dB. The updated regression failed on v1.3.0 and passed after reducing the maximum envelope power from four to three.
+- Release AU/VST3 builds pass and report version 1.3.1; both bundle signatures verify. CTest passes all three suites, including float/double processor, routing, timing and automation checks. The core suite passes ASan/UBSan. VST3 passes pluginval 1.0.4 at strictness level 5.
+- Amount 0–50 retains the original mapping, including the pre-v1.3.0 maximum at 50. The audio engine and graph continue to share the gain function. Saved values above 50 intentionally produce less ducking than v1.3.0.
+
 ## v1.3.0 expanded Amount range
 
 Local verification on 2026-11-03, Apple Silicon macOS, JUCE 8.0.9:

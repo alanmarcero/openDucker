@@ -29,7 +29,7 @@ double envelopeGain(double shaped, double amount) noexcept {
     const double reduction=1-shaped;
     const double depth=std::min(1.0,2*amount);
     const double extra=1-std::max(0.0,2*amount-1)*reduction;
-    return (1-depth*reduction)*extra*extra*extra;
+    return (1-depth*reduction)*extra*extra;
 }
 
 void Engine::prepare(double sr) noexcept {

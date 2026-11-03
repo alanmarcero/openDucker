@@ -55,7 +55,7 @@ template<typename Sample> void testAudio() {
             require(left>=0 && left<=0.800001,"Plugin increases amplitude");
             require(std::abs(left+2*right)<1e-7,"Stereo link broken");
             if((start+i)%24000==0) require(std::abs(left)<1e-10,"JUCE adapter misses beat minimum");
-            if((start+i)%24000==12000) require(left>.048 && left<.056,"Maximum Amount does not deeply duck the actual audio between pulses");
+            if((start+i)%24000==12000) require(left>.096 && left<.104,"Maximum Amount does not apply about 18 dB of ducking between pulses");
         }
     }
     require(p.getLatencySamples()==0,"Unexpected latency");
@@ -85,7 +85,7 @@ template<typename Sample> void testEffectsRouting() {
         juce::AudioBuffer<Sample> audio(2,12001);audio.clear();audio.setSample(0,0,Sample{1});audio.setSample(1,0,Sample{1});
         host.position.setPpqPosition(0);p.processBlock(audio,midi);
         const double expectedDry=target==1 ? 0.5 : 0;
-        const double expectedWet=target==0 ? 0.5 : (position==0 ? 0 : 0.5*0.064794482);
+        const double expectedWet=target==0 ? 0.5 : (position==0 ? 0 : 0.5*0.128426166);
         require(std::abs(audio.getSample(0,0)-expectedDry)<1e-5,"Dry routing ducks the wrong branch");
         require(std::abs(audio.getSample(0,12000)-expectedWet)<1e-4,"Wet routing has wrong placement or gain");
         require(std::abs(audio.getSample(0,12000)-audio.getSample(1,12000))<1e-7,"Mono delay changes stereo link");
@@ -265,7 +265,7 @@ template<typename Sample> void testMonoAndDisabledEffects() {
     for(int i=0;i<buffer.getNumSamples();++i) buffer.setSample(0,i,Sample{1});
     host.position.setPpqPosition(2);p.processBlock(buffer,midi);
     require(std::abs(buffer.getSample(0,0))<1e-7,"Both FX off does not restore original ducking");
-    require(std::abs(buffer.getSample(0,12000)-0.064794482)<1e-6,"FX Mix changes ducking gain with both FX off");
+    require(std::abs(buffer.getSample(0,12000)-0.128426166)<1e-6,"FX Mix changes ducking gain with both FX off");
     require(p.getTailLengthSeconds()<1e-9,"Both FX off reports a tail");
     p.setPlayHead(nullptr);
 }
