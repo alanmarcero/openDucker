@@ -34,33 +34,22 @@ def validate_packages(directory, repository, revision):
                 raise ValueError(f'Package source does not match the release tag: {name}')
 
 
-def publish(tag, repository, source_directory, dist):
-    if not tag.startswith('v'):
-        raise ValueError('Release tag must start with v')
-    revision = subprocess.check_output(
-        ['git', '-C', str(source_directory), 'rev-parse', '--verify', f'refs/tags/{tag}^{{commit}}'],
-        text=True).strip()
-    checked_out = subprocess.check_output(
-        ['git', '-C', str(source_directory), 'rev-parse', 'HEAD'], text=True).strip()
-    if checked_out != revision:
-        raise ValueError('Checked-out source does not match the release tag')
-
+def lookup_release(repository, tag):
     result = subprocess.run(
         ['gh', 'api', f'repos/{repository}/releases/tags/{quote(tag, safe="")}'],
         capture_output=True, text=True)
-    release = json.loads(result.stdout)
+    try:
+        release = json.loads(result.stdout or '{}')
+    except json.JSONDecodeError as error:
+        raise RuntimeError(f'Release lookup failed: {result.stderr.strip()}') from error
     if result.returncode:
         if str(release.get('status')) != '404':
             raise RuntimeError(f'Release lookup failed: {result.stderr.strip()}')
-        validate_packages(dist, repository, revision)
-        subprocess.run([
-            'gh', 'release', 'create', tag, *(str(dist / name) for name in ASSETS),
-            '--repo', repository, '--verify-tag', '--target', revision,
-            '--notes-file', str(source_directory / 'docs/RELEASE_NOTES.md'),
-            '--title', f'openDucker {tag}',
-        ], check=True)
-        return
+        return None
+    return release
 
+
+def verify_existing_release(release, tag, repository, revision):
     if release['tag_name'] != tag or release['draft'] or not release['published_at']:
         raise ValueError('Existing release must be published for the requested tag')
     uploaded = {asset['name'] for asset in release['assets'] if asset['state'] == 'uploaded'}
@@ -74,6 +63,41 @@ def publish(tag, repository, source_directory, dist):
         # Rebuilt ZIPs can differ; the published manifest authenticates the published bytes.
         validate_packages(Path(temporary), repository, revision)
     print(f'Existing release {tag} has valid packages for {revision}; preserved all assets.')
+
+
+def publish(tag, repository, source_directory, dist):
+    if not tag.startswith('v'):
+        raise ValueError('Release tag must start with v')
+    revision = subprocess.check_output(
+        ['git', '-C', str(source_directory), 'rev-parse', '--verify', f'refs/tags/{tag}^{{commit}}'],
+        text=True).strip()
+    checked_out = subprocess.check_output(
+        ['git', '-C', str(source_directory), 'rev-parse', 'HEAD'], text=True).strip()
+    if checked_out != revision:
+        raise ValueError('Checked-out source does not match the release tag')
+
+    release = lookup_release(repository, tag)
+    if release is None:
+        validate_packages(dist, repository, revision)
+        try:
+            subprocess.run([
+                'gh', 'release', 'create', tag, *(str(dist / name) for name in ASSETS),
+                '--repo', repository, '--verify-tag', '--target', revision,
+                '--notes-file', str(source_directory / 'docs/RELEASE_NOTES.md'),
+                '--title', f'openDucker {tag}',
+            ], check=True, capture_output=True, text=True)
+        except subprocess.CalledProcessError as error:
+            message = f'{error.stderr or ""}\n{error.stdout or ""}'
+            # gh reports this when the tag's release was created between the lookup and create.
+            if 'already exists' not in message:
+                raise
+            release = lookup_release(repository, tag)
+            if release is None:
+                raise
+            verify_existing_release(release, tag, repository, revision)
+        return
+
+    verify_existing_release(release, tag, repository, revision)
 
 
 if __name__ == '__main__':

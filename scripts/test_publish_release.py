@@ -80,16 +80,23 @@ class PublishReleaseTests(unittest.TestCase):
             self.assertIn('--verify-tag', command)
             self.assertEqual(command[command.index('--target') + 1], self.revision)
             self.assertEqual(Path(command[command.index('--notes-file') + 1]).read_text(), 'Release notes')
-            if self.api_status == 404 and self.create_status == 0:
+            if getattr(self, 'create_conflict', False):
+                self.api_status = 200
+                self.create_conflict = False
+                result = subprocess.CompletedProcess(
+                    command, 1, '', 'a release with the same tag name already exists: v1.0.0')
+            elif self.api_status == 404 and self.create_status == 0:
                 self.created.mkdir()
                 for path in command[4:]:
                     if Path(path).is_file() and Path(path).parent == self.dist:
                         shutil.copy2(path, self.created)
-            result = subprocess.CompletedProcess(command, self.create_status or int(self.api_status != 404))
+                result = subprocess.CompletedProcess(command, 0)
+            else:
+                result = subprocess.CompletedProcess(command, self.create_status or int(self.api_status != 404))
         else:
             self.fail(f'Unexpected GitHub mutation: {command}')
         if kwargs.get('check') and result.returncode:
-            raise subprocess.CalledProcessError(result.returncode, command)
+            raise subprocess.CalledProcessError(result.returncode, command, result.stdout, result.stderr)
         return result
 
     def publish(self):
@@ -102,6 +109,13 @@ class PublishReleaseTests(unittest.TestCase):
         self.assertEqual({p.name: p.read_bytes() for p in self.remote.iterdir()}, self.before)
 
     def test_existing_valid_release_uses_original_checksums_and_preserves_bytes(self):
+        self.publish()
+        self.assertFalse(self.created.exists())
+        self.assertEqual({p.name: p.read_bytes() for p in self.remote.iterdir()}, self.before)
+
+    def test_same_tag_already_exists_keeps_the_published_release(self):
+        self.api_status = 404
+        self.create_conflict = True
         self.publish()
         self.assertFalse(self.created.exists())
         self.assertEqual({p.name: p.read_bytes() for p in self.remote.iterdir()}, self.before)
