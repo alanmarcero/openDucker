@@ -5,7 +5,7 @@
 - Audio processing is unchanged from v1.3.1. The editor keeps the line "Find your bounce." Hold, Recovery, and Phase remain labeled on their knobs.
 - The plugin version is 1.3.2, from the CMake project version used by the JUCE bundle.
 - macOS CI uses macos-15. The universal build is still arm64 and x86_64 with deployment target 11.0. Native tests and pluginval strictness level 5 are unchanged.
-- Linux core and effects tests passed before this version was tagged. Release publication still requires the macOS and Windows jobs.
+- [Release run 42155471708](https://github.com/alanmarcero/openDucker/actions/runs/42155471708) passed DSP/sanitizers, macOS universal, Windows x64, and publish. [Main run 42155469860](https://github.com/alanmarcero/openDucker/actions/runs/42155469860) passed the same three build jobs. The published ZIPs are version 1.3.2 and contain "Find your bounce."
 
 ## v1.3.1 maximum Amount adjustment
 
