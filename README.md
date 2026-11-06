@@ -10,7 +10,7 @@
 
 *Captured from the v1.2.0 native editor. [Capture details and provenance](docs/SCREENSHOTS.md).*
 
-## Make it bounce
+## Ducking
 
 1. Insert openDucker on a sustained synth, bass, pad, or bus and start your DAW's transport.
 2. Turn **Amount** up for deeper pumping. 0% disables ducking (FX can still run); 50% matches the original maximum. Above 50%, the signal stays quieter through more of the cycle. At 100%, Smooth is about 18 dB down halfway through the beat.
@@ -23,7 +23,7 @@ Double-click Amount to reset to 65%. Use the **On** button to bypass the entire 
 
 The speaker pumps with the selected host-synced rate and idles when playback stops. Smoke and lights rise as Amount increases; animated sparks appear at 70% and above.
 
-## Shape the tail
+## Effects
 
 Turn **FX On** to enable effects. New instances use **Parallel** flow: Delay and Reverb each receive the source, then their wet outputs are summed into Sustain → Destroy. This keeps echoes audible and lets reverb start before the first delay repeat. **Serial** retains Delay → Reverb → Sustain → Destroy for diffuse, delayed tails. Effects start disabled, including when opening sessions saved by the original plugin. **FX Mix** blends dry input and the effects output. **Hide FX** collapses the controls without changing the sound.
 
@@ -38,7 +38,7 @@ Delay and Reverb have individual bypass switches. With both stages off, Sustain 
 Sessions saved before v1.2.0 keep Serial flow, Tail Destroy, and the original Hold, Recovery and Phase defaults. All new controls support host automation and session recall. In v1.3.0, Amount has a stronger range, so saved settings and automation duck more deeply at the same values. Halve previous Amount values to reproduce the old ducking strength (old 100% = new 50%).
 
 
-## Timing you can inspect
+## Timing
 
 openDucker reads host PPQ and BPM at the start of every audio callback. It calculates the musical position of **each sample** from that anchor. It does not run a UI timer or an accumulating free-running oscillator. This keeps the pulse aligned across buffer sizes, transport restarts, seeks and reported loop boundaries. Audio latency is **zero samples**.
 
