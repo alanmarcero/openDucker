@@ -284,9 +284,6 @@ void DuckerEditor::paint(juce::Graphics& g) {
     const double hold=owner.parameters.getRawParameterValue("hold")->load()*.01;
     const double recovery=owner.parameters.getRawParameterValue("recovery")->load()*.01;
     const double offset=owner.parameters.getRawParameterValue("phaseOffset")->load()*.01;
-    text(g,"Shape your bounce",{380,365,290,23},16,paper,juce::Justification::centredLeft,true);
-    text(g,"Hold low, recover, then stay open.",{380,393,290,20},12,muted,juce::Justification::centredLeft);
-    text(g,"Phase moves the pulse within the beat.",{380,415,300,20},12,muted,juce::Justification::centredLeft);
     juce::Path curve;
     for(int i=0;i<=652;++i) {
         const auto phase=static_cast<double>(i)/652;
