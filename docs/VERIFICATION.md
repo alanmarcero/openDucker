@@ -1,5 +1,13 @@
 # Verification
 
+## v2.1.0 restored FX rack
+
+Local verification on 2026-11-07, Apple Silicon macOS, JUCE 8.0.9:
+
+- Core suite (`ducker_tests`): all 16 curves, slope length, Sync/MIDI/Audio triggers, Retrigger, Shift, Smoothing, Linkwitz-Riley crossover, and transient detector pass.
+- Effects DSP suite (`ducker_effects_tests`): delay timing/feedback, mono/ping-pong, automation continuity, independent bass/treble shelves, Room/Hall/Plate reverb decay and stereo width, sustain compression, tail/always Destroy, mono fold-down, reset history clearing, serial tail timing, and multi-rate robustness (44.1–192 kHz) pass.
+- Native plugin suite (`ducker_plugin_tests`, float and double): Sync, Mix, Bypass, MIDI/Audio triggers, sidechain layouts, BAND split and solo, 72-case Dry/Wet/Both × Before/After FX routing matrix across Delay, Reverb, Sustain, Destroy, Parallel and Serial, standalone Sustain and Always Destroy, host reset tail clearing, mono ping-pong fold-down, AU parameter version hints, legacy session recall, all ducker and FX controls, EQ zero detents, FX panel collapse/expand, and 2x native screenshots pass.
+
 ## v2.0.0 Kickstart-style redesign
 
 Local verification on 2026-11-06, Apple Silicon macOS, JUCE 8.0.9:

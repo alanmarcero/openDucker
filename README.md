@@ -2,17 +2,17 @@
 
 [Install with OpenVST Manager](https://github.com/alanmarcero/alan-m-OpenVSTManager/releases/latest)
 
-**Fast, sample-accurate volume ducking without sidechain routing.** Drop it on a bass, pad or bus, pick one of 16 curves, drag the slope to fit your kick, and trigger it from the host tempo, MIDI notes or incoming audio.
+**Fast, sample-accurate volume ducking and sidechain FX.** Drop it on a bass, pad, lead or bus, pick one of 16 curves, drag the slope to fit your kick, trigger from host tempo, MIDI notes or incoming audio, and shape the space with built-in ducked Delay, Reverb, Sustain and Destroy FX.
 
 [Download](https://github.com/alanmarcero/openDucker/releases/latest) · [OpenVST Manager](https://github.com/alanmarcero/alan-m-OpenVSTManager) · [Verification](docs/VERIFICATION.md)
 
 ![openDucker 2 in Sync mode](docs/screenshots/openDucker-sync.png)
 
-*Captured from the running v2.0.0 native editor. [Capture details](docs/SCREENSHOTS.md).*
+*Captured from the running v2.1.0 native editor. [Capture details](docs/SCREENSHOTS.md).*
 
-## What's in v2
+## What's in v2.1
 
-openDucker 2 is a ground-up redesign into a single-purpose kick-and-bass ducker, modelled on the workflow of a popular commercial plugin (see [License and credits](#license-and-credits)). The v1 effects section, mascot and Amount knob are gone.
+openDucker 2 combines a sample-accurate Kickstart-style volume-shaping ducker and the DJ Duck booth with the full multi-effect chain (Delay, Reverb, Sustain, Destroy and flexible Dry/Wet/Both × Before/After FX ducking routing).
 
 | Control | What it does |
 | --- | --- |
@@ -25,6 +25,11 @@ openDucker 2 is a ground-up redesign into a single-purpose kick-and-bass ducker,
 | **Threshold** | Audio trigger level, −60 to 0 dB. |
 | **Retrigger** (loop icon) | When on, a new trigger restarts a running curve; when off, triggers are ignored until it finishes. |
 | **BAND, band slider, headphones** | Duck only the low band below the band frequency (30 Hz–1 kHz) with a Linkwitz-Riley 4th-order split; the headphones solo that band. |
+| **Hide FX / Show FX** | Expand or collapse the FX rack while keeping audio processing active. |
+| **FX On, Duck (Dry / Wet / Both), Before FX / After FX, Flow (Serial / Parallel)** | Enable the effects rack, choose whether the dry signal, wet effects, or both duck, place ducking before or after the FX chain, and route Delay and Reverb in serial or parallel. |
+| **Delay** | Tempo-synced stereo or ping-pong delay (`1/32` to `1 bar`, default `1/8 dotted`) with Feedback and Bass/Treble shelves (with 0 dB drag detents). |
+| **Reverb** | Modulated stereo Room, Hall and Plate reverb (0.2–25 s decay) with stereo Width and Bass/Treble shelves. |
+| **Sustain, Destroy (Tail / Always), FX Mix, Output** | Upward/peak sustain compression, bitcrush/stutter/drive Destroy stage (on the final 5 s of the FX tail or continuously), dry/wet FX crossfade, and output trim (−24 to +12 dB) with peak meter. |
 | **Menu** | Trigger smoothing (Off, Low, Medium, High), reset slope and shift, About. |
 
 The display overlays the input (grey) and output (yellow) over one cycle, so you can line the curve up with a kick and bass by eye. The editor resizes freely at a fixed aspect ratio.
@@ -35,14 +40,13 @@ The display overlays the input (grey) and output (yellow) over one cycle, so you
 
 ## Using it
 
-1. Insert openDucker on the sound you want to duck (bass, pad, bus).
+1. Insert openDucker on the sound you want to duck (bass, pad, lead, bus).
 2. **Sync:** start the transport and choose a Length. **MIDI:** route a kick or drum track's MIDI to the plugin. **Audio:** enable the plugin's sidechain input in your DAW and send the kick to it, or leave it disconnected to trigger from the plugin's own input.
 3. Pick a curve, then drag the slope handle until the recovery fits your kick.
 4. Turn on **BAND** to keep the mids and highs untouched, and use the headphones to hear only the ducked band.
+5. Turn on **FX On** to add tempo-synced Delay, Reverb, Sustain and Destroy, and select **Dry**, **Wet** or **Both** (**Before FX** or **After FX**) to duck the source, the FX tails, or everything together.
 
 All controls support host automation and session recall. Mono and stereo, 32-bit and 64-bit processing are supported. Latency is zero samples. Ducking in Sync mode ramps to unity when the host is stopped or provides no musical timing; it never free-runs. MIDI and Audio modes work while stopped, using the host tempo (120 BPM if none is available).
-
-> **Upgrading from v1:** v2 is a different plugin design with new parameters. v1 sessions load but their old settings are not carried over.
 
 ## Timing you can inspect
 
