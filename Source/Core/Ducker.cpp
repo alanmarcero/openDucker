@@ -1,158 +1,71 @@
 #include "Ducker.h"
 #include <algorithm>
 #include <cmath>
-#include <limits>
 
 namespace duck {
 namespace {
-double smooth(double x) noexcept { return x*x*(3-2*x); }
-double fraction(double x) noexcept { return x-std::floor(x); }
+double fraction(double x) noexcept { return x - std::floor(x); }
+bool usableBpm(double bpm) noexcept { return std::isfinite(bpm) && bpm > 0 && bpm <= 10000; }
 }
 
-double envelope(double phase, int shape, double edge, double hold, double recovery) noexcept {
-    phase=std::clamp(phase,0.0,1.0);
-    edge=std::clamp(edge,0.000001,0.08);
-    if(phase>1-edge) return smooth((1-phase)/edge);
-    hold=std::isfinite(hold)?std::clamp(hold,0.0,0.8):0;
-    recovery=std::isfinite(recovery)?std::clamp(recovery,0.02,1.0):1;
-    const double start=hold*(1-edge);
-    const double s=smooth(std::clamp((phase-start)/((1-edge-start)*recovery),0.0,1.0));
-    switch(shape) {
-        case 1: return s*s;
-        case 2: return 1-(1-s)*(1-s)*(1-s);
-        case 3: return s*s*s;
-        default: return s;
-    }
+double cycleGain(int curve, double phase, double length) noexcept {
+    length = std::clamp(length, 0.05, 1.0);
+    return curveValue(curve, std::clamp(phase, 0.0, 1.0) / length);
 }
 
-double envelopeGain(double shaped, double amount) noexcept {
-    const double reduction=1-shaped;
-    const double depth=std::min(1.0,2*amount);
-    const double extra=1-std::max(0.0,2*amount-1)*reduction;
-    return (1-depth*reduction)*extra*extra;
+void Engine::prepare(double rate) noexcept {
+    *this = Engine{};
+    sampleRate = std::isfinite(rate) && rate >= 8000 && rate <= 768000 ? rate : 48000;
 }
 
-void Engine::prepare(double sr) noexcept {
-    *this=Engine{};
-    sampleRate=std::isfinite(sr) && sr>=8000 && sr<=768000 ? sr : 48000;
-    rampLength=static_cast<int>(sampleRate*0.005);
-    transitionLength=static_cast<int>(sampleRate*0.002);
-}
-
-double Engine::wrapLoop(double ppq) const noexcept {
-    // Re-anchoring can move an exact boundary by a few floating-point ULPs.
-    const double tolerance=8*std::numeric_limits<double>::epsilon()*std::max(1.0,std::abs(ppq));
-    if(loopEnabled && ppq>=transport.loopEnd-tolerance) {
-        if(ppq<transport.loopEnd) return transport.loopStart;
-        return transport.loopStart+std::fmod(ppq-transport.loopStart,transport.loopEnd-transport.loopStart);
-    }
-    return ppq;
+double Engine::cycleSamples() const noexcept {
+    return cycleBeats[static_cast<size_t>(parameters.rate)] * 60.0 * sampleRate / bpm;
 }
 
 void Engine::beginBlock(Transport t, Parameters p) noexcept {
-    const bool wasActive=active;
-    transport=t;
-    active=t.valid && t.playing && std::isfinite(t.ppq) && std::abs(t.ppq)<1e12
-        && std::isfinite(t.bpm) && t.bpm>0 && t.bpm<=10000;
-    step=active ? t.bpm/(60*sampleRate) : 0;
-    if(active && (!initialized || !wasActive)) {
-        edgeBpm=edgeBpmTarget=t.bpm; edgeRampLeft=0;
-    } else if(active && t.bpm!=edgeBpmTarget) {
-        edgeBpmTarget=t.bpm; edgeRampLeft=transitionLength;
-        edgeBpmStep=(edgeBpmTarget-edgeBpm)/edgeRampLeft;
-    }
-    loopEnabled=active && t.looping && std::isfinite(t.loopStart) && std::isfinite(t.loopEnd)
-        && std::abs(t.loopStart)<1e12 && std::abs(t.loopEnd)<1e12 && t.loopEnd>t.loopStart;
-    blockPpq=active ? wrapLoop(t.ppq) : 0;
-    offset=0;
-    // Phase is never smoothed. Only amplitude at transport discontinuities is crossfaded.
-    if(initialized && (active!=wasActive || (active && std::abs(blockPpq-expectedPpq)>std::max(step*1.5,1e-9)))) {
-        transitionFrom=lastGain;
-        transitionLeft=transitionLength;
-    }
-    p.shape=std::clamp(p.shape,0,3); p.rate=std::clamp(p.rate,0,5);
-    selectedRate=p.rate;
-    const double target=p.bypass ? 0 : (std::isfinite(p.amount) ? std::clamp(p.amount,0.0,1.0) : 0);
-    std::array<double,4> newShapes{}; newShapes[static_cast<size_t>(p.shape)]=1;
-    std::array<double,6> newRates{}; newRates[static_cast<size_t>(p.rate)]=1;
-    const std::array<double,3> newTiming{
-        std::isfinite(p.hold)?std::clamp(p.hold,0.0,0.8):0,
-        std::isfinite(p.recovery)?std::clamp(p.recovery,0.02,1.0):1,
-        std::isfinite(p.phaseOffset)?std::clamp(p.phaseOffset,0.0,1.0):0};
-    if(initialized && newTiming!=timing) {
-        if(!timingChanged) previousTiming=timing;
-        timingChanged=true;
-    }
-    timing=newTiming;
-    if(!initialized) {
-        amount=amountTarget=target;
-        shapes=shapeTargets=newShapes; rates=rateTargets=newRates;
-        initialized=true;
-    } else if(target!=amountTarget || newShapes!=shapeTargets || newRates!=rateTargets) {
-        amountTarget=target; shapeTargets=newShapes; rateTargets=newRates;
-        rampLeft=rampLength;
-        amountStep=(amountTarget-amount)/rampLength;
-        for(size_t i=0;i<shapes.size();++i) shapeSteps[i]=(shapeTargets[i]-shapes[i])/rampLength;
-        for(size_t i=0;i<rates.size();++i) rateSteps[i]=(rateTargets[i]-rates[i])/rampLength;
-    }
+    p.curve = std::clamp(p.curve, 0, curveCount - 1);
+    p.rate = std::clamp(p.rate, 0, static_cast<int>(cycleBeats.size()) - 1);
+    p.smoothing = std::clamp(p.smoothing, 0, static_cast<int>(smoothingMilliseconds.size()) - 1);
+    p.length = std::isfinite(p.length) ? std::clamp(p.length, 0.05, 1.0) : 1.0;
+    p.shift = std::isfinite(p.shift) ? std::clamp(p.shift, 0.0, 1.0) : 0.0;
+    if(p.trigger == Trigger::Sync) isRunning = false;
+    parameters = p;
+    const double milliseconds = smoothingMilliseconds[static_cast<size_t>(p.smoothing)];
+    smoothingCoefficient = milliseconds > 0 ? std::exp(-1.0 / (milliseconds * 0.001 * sampleRate)) : 0.0;
+    const bool hostTiming = t.valid && std::isfinite(t.ppq) && std::abs(t.ppq) < 1e12 && usableBpm(t.bpm);
+    bpm = hostTiming ? t.bpm : 120.0;
+    syncActive = hostTiming && t.playing;
+    step = bpm / (60.0 * sampleRate);
+    blockPpq = hostTiming ? t.ppq : 0.0;
+    offset = 0;
+}
+
+void Engine::trigger() noexcept {
+    if(parameters.trigger == Trigger::Sync) return;
+    if(isRunning && !parameters.retrigger) return;
+    isRunning = true;
+    elapsed = 0;
 }
 
 double Engine::nextGain() noexcept {
-    const double ppq=wrapLoop(blockPpq+static_cast<double>(offset)*step);
-    if(active && renderedActive && loopEnabled && (ppq<previousPpq || step>=transport.loopEnd-transport.loopStart)) {
-        // A loop is only seamless when its length is a whole number of every audible cycle.
-        const double length=transport.loopEnd-transport.loopStart;
-        for(size_t r=0;r<rates.size();++r) if(rates[r]>1e-12 && std::abs(length/cycleBeats[r]-std::round(length/cycleBeats[r]))>1e-9) {
-            transitionFrom=lastGain; transitionLeft=transitionLength; break;
+    double target = 1;
+    if(parameters.trigger == Trigger::Sync) {
+        isRunning = syncActive;
+        lastPhase = 0;
+        if(syncActive) {
+            const double ppq = blockPpq + offset * step;
+            lastPhase = fraction(ppq / cycleBeats[static_cast<size_t>(parameters.rate)] - parameters.shift);
+            target = cycleGain(parameters.curve, lastPhase, parameters.length);
         }
+    } else if(isRunning) {
+        const double phase = elapsed / cycleSamples() - parameters.shift;
+        elapsed += 1;
+        if(phase >= 1) isRunning = false;
+        lastPhase = std::clamp(phase, 0.0, 1.0);
+        if(isRunning && phase >= 0) target = cycleGain(parameters.curve, phase, parameters.length);
     }
-    lastPhase=active ? fraction(ppq/cycleBeats[static_cast<size_t>(selectedRate)]) : 0;
-    double shaped=0,previousShaped=0;
-    if(active) {
-        for(size_t r=0;r<rates.size();++r) if(rates[r]>0) {
-            const double phase=fraction(ppq/cycleBeats[r]-timing[2]);
-            const double edge=std::min(0.08,0.003*edgeBpm/(60*cycleBeats[r]));
-            double value=0,previousValue=0;
-            for(size_t s=0;s<shapes.size();++s) if(shapes[s]>0) {
-                value+=shapes[s]*envelope(phase,static_cast<int>(s),edge,timing[0],timing[1]);
-                if(timingChanged) previousValue+=shapes[s]*envelope(fraction(ppq/cycleBeats[r]-previousTiming[2]),
-                    static_cast<int>(s),edge,previousTiming[0],previousTiming[1]);
-            }
-            shaped+=rates[r]*value; previousShaped+=rates[r]*previousValue;
-        }
-    }
-    double gain=active ? envelopeGain(shaped,amount) : 1;
-    if(timingChanged) {
-        // Cancel only the parameter-induced jump, then remove that correction over 5 ms.
-        // Musical motion continues even when automation arrives every sample.
-        timingCorrection+=envelopeGain(previousShaped,amount)-envelopeGain(shaped,amount);
-        timingCorrectionStep=timingCorrection/rampLength;
-        timingTransitionLeft=rampLength; timingChanged=false;
-    }
-    if(timingTransitionLeft>0) {
-        gain+=timingCorrection;
-        timingCorrection-=timingCorrectionStep;
-        if(--timingTransitionLeft==0) timingCorrection=0;
-    }
-    if(transitionLeft>0) {
-        const double mix=smooth(1-static_cast<double>(transitionLeft)/transitionLength);
-        gain=transitionFrom+(gain-transitionFrom)*mix;
-        --transitionLeft;
-    }
-    if(rampLeft>0) {
-        amount+=amountStep;
-        for(size_t i=0;i<shapes.size();++i) shapes[i]+=shapeSteps[i];
-        for(size_t i=0;i<rates.size();++i) rates[i]+=rateSteps[i];
-        if(--rampLeft==0) {amount=amountTarget; shapes=shapeTargets; rates=rateTargets;}
-    }
-    if(edgeRampLeft>0) {
-        edgeBpm+=edgeBpmStep;
-        if(--edgeRampLeft==0) edgeBpm=edgeBpmTarget;
-    }
-    previousPpq=ppq; renderedActive=active;
     ++offset;
-    expectedPpq=wrapLoop(blockPpq+static_cast<double>(offset)*step);
-    lastGain=std::clamp(gain,0.0,1.0);
-    return lastGain;
+    gain = target + (gain - target) * smoothingCoefficient;
+    return std::clamp(gain, 0.0, 1.0);
 }
 }
