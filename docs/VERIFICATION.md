@@ -1,5 +1,15 @@
 # Verification
 
+## v2.0.0 Kickstart-style redesign
+
+Local verification on 2026-11-06, Apple Silicon macOS, JUCE 8.0.9:
+
+- Core suite: all 16 curves stay within 0..1 without discontinuities; the default curve is monotonic; slope length compresses the curve; Sync gain follows host position; Shift, Length and Smoothing behave as specified; stopped or untimed transport leaves audio unducked; MIDI/Audio triggers restart, retrigger and Shift-delay correctly; the Linkwitz-Riley split isolates bass and treble and recombines with flat magnitude; the transient detector fires once per burst.
+- Native plugin suite (float and double): output follows the Classic S curve sample for sample over one second at 120 BPM; Mix 0%/50% and bypass; mono layout; a MIDI note ducks on its exact sample; an audio transient triggers on its sample with correct timing; sidechain layouts are accepted and mismatched layouts rejected; BAND ducks only the bass, solo isolates the band; every editor control (Length, triggers, 16 curves, arrows, retrigger, band, solo, sliders, handle drag and reset) drives its parameter; session recall; display and selected curve render.
+- Screenshots in the README are captures of the running editor.
+
+No commercial-DAW listening session is claimed. CI additionally runs ASan/UBSan, pluginval strictness 5, and the macOS universal and Windows x64 builds.
+
 ## v1.3.2 copy cleanup
 
 - Audio processing is unchanged from v1.3.1. The editor keeps the line "Find your bounce." Hold, Recovery, and Phase remain labeled on their knobs.

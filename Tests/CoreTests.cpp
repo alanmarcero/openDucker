@@ -1,189 +1,123 @@
 #include "Ducker.h"
-#include <algorithm>
+#include "Crossover.h"
+#include "TransientDetector.h"
 #include <cmath>
 #include <iostream>
-#include <limits>
 #include <stdexcept>
-#include <vector>
 
-void require(bool ok, const char* message) { if (!ok) throw std::runtime_error(message); }
-void near(double a, double b, double tolerance, const char* message) { require(std::abs(a-b) <= tolerance, message); }
+namespace {
+void require(bool ok, const char* message) { if(!ok) throw std::runtime_error(message); }
+duck::Transport playing(double ppq, double bpm = 120) { return {ppq, bpm, true, true}; }
 
-std::vector<double> render(int blockSize, double sr = 48000, double bpm = 120, double start = 0, int count = 96000) {
-    duck::Engine engine; engine.prepare(sr);
-    std::vector<double> out;
-    for (int offset=0; offset<count;) {
-        const auto n = std::min(blockSize, count-offset);
-        engine.beginBlock({start + offset*bpm/(60*sr), bpm, true, true}, {1, 0, 1, false});
-        for (int i=0; i<n; ++i) out.push_back(engine.nextGain());
-        offset += n;
+void testCurves() {
+    for(int curve = 0; curve < duck::curveCount; ++curve) {
+        require(duck::curveNames[static_cast<size_t>(curve)][0] != '\0', "Curve is unnamed");
+        for(int i = 0; i <= 1000; ++i) {
+            const double value = duck::curveValue(curve, i / 1000.0);
+            require(value >= -1e-12 && value <= 1 + 1e-12, "Curve leaves the 0..1 gain range");
+            if(i > 0) require(std::abs(value - duck::curveValue(curve, (i - 1) / 1000.0)) < 0.2, "Curve has a discontinuity");
+        }
     }
-    return out;
+    require(std::abs(duck::curveValue(duck::defaultCurve, 0)) < 1e-12 && std::abs(duck::curveValue(duck::defaultCurve, 1) - 1) < 1e-12,
+        "Default curve does not run from full duck to unity");
+    double previous = 0;
+    for(int i = 0; i <= 100; ++i) {
+        const double value = duck::curveValue(duck::defaultCurve, i / 100.0);
+        require(value >= previous - 1e-12, "Default curve is not monotonic");
+        previous = value;
+    }
+    require(duck::cycleGain(2, 0.5, 0.5) > 0.999, "Curve does not end at the selected length");
+    require(duck::cycleGain(2, 0.25, 0.5) > 0.49 && duck::cycleGain(2, 0.25, 0.5) < 0.51, "Length does not compress the curve");
 }
 
-void timingControlTests() {
-    for(double sr:{44100.,48000.,96000.,192000.}) {
-        std::vector<double> reference;
-        for(int block:{1,127,4096}) {
-            duck::Engine e;e.prepare(sr);std::vector<double> output;
-            for(int start=0;start<static_cast<int>(sr);start+=block) {
-                e.beginBlock({start*2/sr,120,true,true},{1,2,1,false,.4,.3,.25});
-                for(int i=0;i<std::min(block,static_cast<int>(sr)-start);++i) output.push_back(e.nextGain());
-            }
-            if(reference.empty()) reference=output;
-            else for(size_t i=0;i<output.size();++i) near(output[i],reference[i],1e-11,"Envelope controls depend on block size");
-        }
-    }
-    for(int control=0;control<3;++control) {
-        duck::Engine e;e.prepare(48000);duck::Parameters p{1,0,1,false,.4,.3,0};
-        double previous=0,largest=0;
-        for(int start=0;start<24000;start+=64) {
-            if(start==12032) {if(control==0) p.hold=.8;else if(control==1) p.recovery=.02;else p.phaseOffset=.75;}
-            e.beginBlock({start/24000.0,120,true,true},p);
-            for(int i=0;i<64;++i) {
-                const double gain=e.nextGain();
-                if(start>=12032 && start<12544) largest=std::max(largest,std::abs(gain-previous));
-                require(std::isfinite(gain) && gain>=0 && gain<=1,"Envelope controls produce invalid gain");previous=gain;
-            }
-        }
-        std::cout<<"Control "<<control<<" largest automation step="<<largest<<'\n';
-        require(largest<.02,"Envelope control automation clicks");
-    }
-    for(int block:{1,16,64,256}) {
-        duck::Engine e;e.prepare(48000);double sum=0,peak=0;
-        for(int start=0;start<48000;start+=block) {
-            e.beginBlock({start/24000.0,120,true,true},{1,0,1,false,0,1,start/48000.0});
-            for(int i=0;i<std::min(block,48000-start);++i) {const auto gain=e.nextGain();sum+=gain;peak=std::max(peak,gain);}
-        }
-        require(peak>.8 && sum/48000>.2,"Continuous timing automation freezes or suppresses gain at small block sizes");
-    }
-    std::cout<<"PASS envelope control partitioning, sample rates and automation\n";
+void testSync() {
+    duck::Engine engine;
+    engine.prepare(48000);
+    duck::Parameters p; p.smoothing = 0;
+    engine.beginBlock(playing(0), p);
+    require(engine.nextGain() < 1e-9, "Sync does not start fully ducked on the beat");
+    engine.beginBlock(playing(0.5), p);
+    const double middle = engine.nextGain();
+    require(std::abs(middle - duck::cycleGain(2, 0.5, 1)) < 1e-12, "Sync gain does not follow host position");
+    p.rate = 3;
+    engine.beginBlock(playing(1), p);
+    require(std::abs(engine.nextGain() - duck::cycleGain(2, 0.25, 1)) < 1e-12, "Rate does not change the cycle length");
+    p.rate = 1; p.shift = 0.5;
+    engine.beginBlock(playing(0.5), p);
+    require(engine.nextGain() < 1e-9, "Shift does not move the curve within the cycle");
+    p.shift = 0;
+    duck::Transport stopped = playing(0.1); stopped.playing = false;
+    engine.beginBlock(stopped, p);
+    require(engine.nextGain() == 1 && !engine.running(), "Stopped transport ducks");
+    engine.beginBlock({0.1, 120, true, false}, p);
+    require(engine.nextGain() == 1 && !engine.synced(), "Missing host timing ducks");
+    p.smoothing = 3;
+    engine.beginBlock(playing(0), p);
+    const double first = engine.nextGain();
+    require(first > 0.5 && first < 1, "Smoothing does not limit the first step");
+    engine.beginBlock(playing(0.1, 120), p);
+    for(int i = 0; i < 4800; ++i) engine.nextGain();
 }
 
-void amountRangeTests() {
-    for(int shape=0;shape<4;++shape) {
-        std::vector<double> previous(24000,1);
-        for(double amount:{0.0,0.125,0.25,0.5,0.75,1.0}) {
-            duck::Engine e;e.prepare(48000);
-            e.beginBlock({0,120,true,true},{amount,shape,1,false});
-            double energy=0;
-            for(int i=0;i<24000;++i) {
-                const double gain=e.nextGain();
-                require(gain<=previous[static_cast<size_t>(i)]+1e-12,"Increasing Amount reduces ducking");
-                previous[static_cast<size_t>(i)]=gain;energy+=gain*gain;
-                if(amount==0) near(gain,1,0,"Zero Amount is not transparent");
-                if(amount==0.5) near(gain,duck::envelope(i/24000.0,shape,0.006),1e-12,"50% does not match the original maximum ducking");
-                if(shape==0 && amount==1 && i==12000)
-                    require(gain>.12 && gain<.13,"Maximum Smooth ducking is not about 18 dB down halfway through the beat");
-            }
-            std::cout<<"Shape "<<shape<<" amount="<<amount*100<<" cycle RMS="<<std::sqrt(energy/24000)<<'\n';
-        }
+void testTriggers() {
+    duck::Engine engine;
+    engine.prepare(48000);
+    duck::Parameters p; p.smoothing = 0; p.trigger = duck::Trigger::Midi;
+    engine.beginBlock({0, 120, false, true}, p);
+    require(engine.nextGain() == 1, "MIDI mode ducks before a trigger");
+    engine.trigger();
+    require(engine.nextGain() < 1e-9 && engine.running(), "Trigger does not restart the curve");
+    for(int i = 0; i < 12000; ++i) engine.nextGain();
+    const double halfway = engine.nextGain();
+    require(std::abs(halfway - duck::cycleGain(2, 12001.0 / 24000, 1)) < 1e-9, "Triggered curve ignores tempo and rate");
+    for(int i = 0; i < 12100; ++i) engine.nextGain();
+    require(!engine.running() && engine.nextGain() == 1, "Triggered curve does not return to unity");
+    p.retrigger = false;
+    engine.beginBlock({0, 120, false, true}, p);
+    engine.trigger();
+    for(int i = 0; i < 1000; ++i) engine.nextGain();
+    engine.trigger();
+    require(engine.nextGain() > 0 && engine.phase() > 0.04, "Retrigger off restarts a running curve");
+    p.retrigger = true;
+    engine.beginBlock({0, 120, false, true}, p);
+    engine.trigger();
+    require(engine.nextGain() < 1e-9, "Retrigger on ignores a new event");
+    p.trigger = duck::Trigger::Sync;
+    engine.beginBlock({0, 120, false, true}, p);
+    engine.trigger();
+    require(engine.nextGain() == 1, "Sync mode responds to triggers");
+    p.trigger = duck::Trigger::Audio; p.shift = 0.25;
+    engine.beginBlock({0, 120, false, true}, p);
+    engine.trigger();
+    require(engine.nextGain() == 1, "Shift does not delay a triggered curve");
+}
+
+void testBandAndDetector() {
+    duck::Crossover band; band.prepare(48000); band.setFrequency(150);
+    double lowEnergy = 0, highEnergy = 0, sumEnergy = 0, inputEnergy = 0;
+    for(int i = 0; i < 48000; ++i) {
+        const double bass = std::sin(6.283185307179586 * 50 * i / 48000), treble = std::sin(6.283185307179586 * 5000 * i / 48000);
+        const auto bands = band.split(0, bass + treble);
+        if(i < 4800) continue;
+        lowEnergy += bands.low * bands.low; highEnergy += bands.high * bands.high;
+        sumEnergy += (bands.low + bands.high) * (bands.low + bands.high); inputEnergy += (bass + treble) * (bass + treble);
     }
-    std::cout<<"PASS expanded Amount range, original maximum at 50%, monotonic depth and transparent zero\n";
+    require(lowEnergy > 0.9 * 0.5 * 43200 && lowEnergy < 1.1 * 0.5 * 43200, "Low band does not isolate the bass");
+    require(highEnergy > 0.9 * 0.5 * 43200 && highEnergy < 1.1 * 0.5 * 43200, "High band does not isolate the treble");
+    require(std::abs(sumEnergy / inputEnergy - 1) < 0.02, "Bands do not recombine with flat magnitude");
+    duck::TransientDetector detector; detector.prepare(48000); detector.setThresholdDb(-24);
+    int fires = 0;
+    for(int burst = 0; burst < 3; ++burst) for(int i = 0; i < 24000; ++i) fires += detector.process(i < 2400 ? 0.8 * std::sin(i * 0.3) : 0.0);
+    require(fires == 3, "Detector does not fire exactly once per burst");
+    fires = 0;
+    for(int i = 0; i < 48000; ++i) fires += detector.process(0.01);
+    require(fires == 0, "Detector fires below threshold");
+}
 }
 
 int main() {
     try {
-        amountRangeTests();
-        timingControlTests();
-        const auto reference = render(1);
-        for (int beat=0; beat<4; ++beat) near(reference[static_cast<size_t>(beat*24000)], 0, 1e-12, "Beat minimum is late");
-        near(reference[12000], 0.128426166, 0.000001, "Half-beat recovery is wrong");
-        for (int block : {7,64,511,1024,4096}) {
-            const auto actual = render(block);
-            for (size_t i=0; i<actual.size(); ++i) near(actual[i], reference[i], 2e-12, "Buffer size changes timing");
-        }
-        for (double sr : {44100,48000,88200,96000,192000}) {
-            const auto result=render(511,sr,120,0,static_cast<int>(sr+1));
-            near(result[static_cast<size_t>(sr/2)],0,1e-12,"Sample-rate timing failure");
-        }
-        const auto negative = render(257,48000,120,-2);
-        for (size_t i=0;i<negative.size();++i) near(negative[i], reference[i],2e-12,"Negative PPQ failure");
-        const auto longTimeline=render(257,48000,120,1000000);
-        for(size_t i=0;i<longTimeline.size();++i) near(longTimeline[i],reference[i],1e-7,"Long-session drift");
-        std::cout << "PASS host-grid minima, sample rates, negative PPQ, long sessions, buffer partitions\n";
-
-        for(double amount:{0.5,1.0}) for(int shape=0;shape<4;++shape) for(int rate=0;rate<6;++rate) {
-            duck::Engine e; e.prepare(48000);
-            e.beginBlock({0,120,true,true},{amount,shape,rate,false});
-            double last=e.nextGain();
-            for(int i=1;i<96000;++i) {
-                const double gain=e.nextGain();
-                require(std::isfinite(gain) && gain>=0 && gain<=1,"Gain could clip audio");
-                require(std::abs(gain-last)<(amount==0.5 ? 0.012 : 0.02),"Discontinuous periodic envelope");
-                last=gain;
-            }
-        }
-        for(int shape=0;shape<4;++shape) {
-            near(duck::envelope(0,shape,0.006),0,0,"Shape starts above silence");
-            near(duck::envelope(1,shape,0.006),0,0,"Shape end discontinuity");
-            near(duck::envelope(0.994,shape,0.006),1,1e-12,"Shape truncates recovery");
-        }
-        std::cout << "PASS four shapes, all rates, bounded gain and continuous beat boundaries\n";
-
-        duck::Engine loop; loop.prepare(48000);
-        loop.beginBlock({3.99,120,true,true,true,1.25,4.0},{1,0,1,false});
-        double loopLast=0;
-        for(int i=0;i<240;++i) loopLast=loop.nextGain();
-        near(loop.nextGain(),loopLast,1e-11,"Fractional loop clicks");
-        near(loop.phase(),0.25,1e-11,"In-buffer loop didn't wrap phase");
-        loop.beginBlock({1.25+1.0/24000,120,true,true,true,1.25,4.0},{1,0,1,false});
-        for(int i=0;i<96;++i) loop.nextGain();
-        near(loop.phase(),0.254,1e-11,"Loop transition delays phase");
-        near(loop.nextGain(),std::pow(duck::envelope(0.25+97.0/24000,0,0.006),3),1e-11,"Loop transition never completes");
-        duck::Engine tempo; tempo.prepare(48000);
-        tempo.beginBlock({0,120,true,true},{1,0,1,false});
-        for(int i=0;i<12000;++i) tempo.nextGain();
-        tempo.beginBlock({0.5,60,true,true},{1,0,1,false});
-        for(int i=0;i<24000;++i) tempo.nextGain();
-        near(tempo.nextGain(),0,1e-12,"Tempo change missed beat");
-        duck::Engine tempoEdge; tempoEdge.prepare(48000);
-        tempoEdge.beginBlock({0.997-1.0/24000,120,true,true},{1,0,1,false});
-        const double beforeTempo=tempoEdge.nextGain();
-        tempoEdge.beginBlock({0.997,60,true,true},{1,0,1,false});
-        const double afterTempo=tempoEdge.nextGain();
-        near(afterTempo,0.125,1e-12,"Tempo width is not smoothed independently of phase");
-        require(std::abs(afterTempo-beforeTempo)<0.012,"Tempo change clicks in pre-duck ramp");
-        for(int blockSize : {1,64,240,511,4096}) for(int rate : {1,5}) {
-            duck::Engine partitioned; partitioned.prepare(48000);
-            duck::Engine single; single.prepare(48000);
-            single.beginBlock({3.99,120,true,true,true,1.25,4},{1,0,rate,false});
-            for(int offset=0;offset<96000;) {
-                const double absolute=3.99+offset/24000.0;
-                const double position=absolute<4 ? absolute : 1.25+std::fmod(absolute-1.25,2.75);
-                partitioned.beginBlock({position,120,true,true,true,1.25,4},{1,0,rate,false});
-                const int n=std::min(blockSize,96000-offset);
-                for(int i=0;i<n;++i) { const auto a=partitioned.nextGain(),b=single.nextGain(); if(std::abs(a-b)>2e-11) std::cerr << "block=" << blockSize << " rate=" << rate << " sample=" << offset+i << " a=" << a << " b=" << b << " phase=" << partitioned.phase() << " refPhase=" << single.phase() << "\n"; near(a,b,2e-11,"Loop transition depends on buffer partition"); }
-                offset+=n;
-            }
-        }
-        duck::Engine integerLoop; integerLoop.prepare(48000);
-        integerLoop.beginBlock({3.99,120,true,true,true,0,4},{1,0,1,false});
-        for(int i=0;i<240;++i) integerLoop.nextGain();
-        near(integerLoop.nextGain(),0,1e-12,"Whole-beat loop minimum is smeared");
-        std::cout << "PASS in-buffer loops, fractional loop points, tempo changes\n";
-
-        duck::Engine e; e.prepare(48000);
-        e.beginBlock({0,120,true,true},{0,0,1,false});
-        for(int i=0;i<1000;++i) near(e.nextGain(),1,0,"Zero amount isn't transparent");
-        e.beginBlock({1000.0/24000,120,true,true},{1,3,3,false});
-        double previous=1;
-        for(int i=0;i<1000;++i) {const auto gain=e.nextGain(); require(std::abs(gain-previous)<0.02,"Automation clicks"); previous=gain;}
-        e.beginBlock({9.0,120,true,true},{1,3,3,false});
-        near(e.nextGain(),previous,1e-12,"Seek clicks");
-        for(int i=1;i<=96;++i) e.nextGain();
-        near(e.phase(), std::fmod((9.0+96.0/24000)/0.25,1.0),1e-12,"Seek slews clock phase");
-        e.beginBlock({0,120,false,true},{1,3,3,false});
-        for(int i=0;i<1000;++i) e.nextGain();
-        near(e.nextGain(),1,0,"Stopped host remains ducked");
-        for(double bad : {0.0,-1.0,std::numeric_limits<double>::quiet_NaN(),std::numeric_limits<double>::infinity()}) {
-            duck::Engine invalid; invalid.prepare(48000);
-            invalid.beginBlock({0,bad,true,true},{1,0,1,false});
-            near(invalid.nextGain(),1,0,"Invalid BPM not dry");
-        }
-        duck::Engine absent; absent.prepare(48000);
-        absent.beginBlock({0,120,true,false},{1,0,1,false});
-        near(absent.nextGain(),1,0,"Missing PPQ runs an unsynced clock");
-        std::cout << "PASS zero amount, automation, seek, stop, invalid/missing host timing\n";
-    } catch(const std::exception& e) {std::cerr << "FAIL: " << e.what() << '\n'; return 1;}
+        testCurves(); testSync(); testTriggers(); testBandAndDetector();
+        std::cout << "PASS curves, sync, shift, length, smoothing, triggers, retrigger, band split and transient detection\n";
+    } catch(const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

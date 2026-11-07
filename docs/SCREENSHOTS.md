@@ -1,7 +1,9 @@
-# Native UI screenshot
+# Native UI screenshots
 
-`assets/native-ui.png` was captured on macOS on 2026-10-27 from the actual v1.2.0 JUCE processor/editor test harness at 48 kHz and 128 BPM. It shows the default controls, including Hold, Recovery, Phase, Parallel FX flow and Always Destroy. FX starts disabled. The 720 × 900 native editor is captured at 1.5× (1080 × 1350); controls, artwork and version labels come from the running editor.
+The three images in `docs/screenshots/` were captured on macOS on 2026-11-06 from the actual v2.0.0 JUCE processor and editor test harness (`Tools/PluginTests.cpp`), rendered at 2x (2000 × 1020) from the 1000 × 510 native editor. Each is preceded by rendering a synthetic kick and bass through the processor so the display shows real input and output peaks:
 
-Reproduce with `ctest --test-dir build --output-on-failure`. The native test writes its snapshots into `build/screenshots/`; the README uses `openDucker.png`.
+- `openDucker-sync.png`: Sync mode at 128 BPM, 1/4 length, Classic S curve, Mix 79%.
+- `openDucker-audio.png`: Audio trigger, Trapezoid curve, slope length 72%.
+- `openDucker-band-midi.png`: MIDI trigger, Valley curve, BAND enabled at 150 Hz.
 
-This is an application capture, not a generated mockup. The source artwork remains documented in `assets/ARTWORK.md` and `assets/ANALOG-CYBER.md`.
+Reproduce with `ctest --test-dir build --output-on-failure`; the native test writes its snapshots into `build/screenshots/`. These are application captures, not mockups.
