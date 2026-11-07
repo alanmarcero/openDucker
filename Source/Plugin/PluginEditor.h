@@ -3,8 +3,9 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 namespace look {
-const juce::Colour background {0xff1c1c1c}, panel {0xff2c2c2c}, panelHover {0xff383838}, display {0xff0e0e0e},
-    yellow {0xffffe033}, darkYellow {0xff8a7a1f}, text {0xffa6a6a6}, ink {0xff1c1c1c};
+const juce::Colour background {0xff10171b}, panel {0xff1c262b}, panelHover {0xff26343b}, display {0xff090e11},
+    mint {0xff8fd3ce}, brightMint {0xffa3f0e9}, yellow {0xffffd043}, darkMint {0xff284946},
+    paper {0xfff2f1e8}, muted {0xff8b9ea7}, ink {0xff10171b};
 }
 
 class DuckLookAndFeel final : public juce::LookAndFeel_V4 {
@@ -59,6 +60,7 @@ public:
     void resized() override;
 private:
     void timerCallback() override;
+    void paintDuckBooth(juce::Graphics& g, juce::Rectangle<float> area, float s);
     void setChoice(const char* id, int index);
     void stepCurve(int delta);
     void showMenu();
@@ -74,6 +76,7 @@ private:
         previous {GlyphButton::Glyph::Previous}, next {GlyphButton::Glyph::Next},
         previousBank {GlyphButton::Glyph::PreviousBank}, nextBank {GlyphButton::Glyph::NextBank};
     std::vector<std::unique_ptr<CurveButton>> curveButtons;
+    juce::Image mascot, faceplate;
     juce::TooltipWindow tooltips {this, 600};
     using SliderAttachment = juce::AudioProcessorValueTreeState::SliderAttachment;
     using ButtonAttachment = juce::AudioProcessorValueTreeState::ButtonAttachment;
