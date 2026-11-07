@@ -1,5 +1,6 @@
 #pragma once
 #include "PluginProcessor.h"
+#include "EffectsPanel.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 
 namespace look {
@@ -15,6 +16,7 @@ public:
     void drawLinearSlider(juce::Graphics&, int, int, int, int, float, float, float, juce::Slider::SliderStyle, juce::Slider&) override;
     void drawButtonBackground(juce::Graphics&, juce::Button&, const juce::Colour&, bool, bool) override;
     void drawButtonText(juce::Graphics&, juce::TextButton&, bool, bool) override;
+    void drawComboBox(juce::Graphics&, int, int, bool, int, int, int, int, juce::ComboBox&) override;
 };
 
 class GlyphButton final : public juce::Button {
@@ -68,6 +70,9 @@ private:
     DuckerProcessor& owner;
     DuckLookAndFeel theme;
     CurveDisplay display;
+    EffectsPanel effectsPanel;
+    juce::TextButton effectsToggle;
+    bool effectsExpanded = true;
     juce::Slider mix, band, shift, threshold;
     std::array<juce::TextButton, 4> rateButtons;
     std::array<juce::TextButton, 3> triggerButtons;

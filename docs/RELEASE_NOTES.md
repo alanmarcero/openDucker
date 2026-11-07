@@ -1,12 +1,10 @@
-openDucker 2.0.0 is a complete redesign into a Kickstart-style volume ducker.
+openDucker 2.1.0 restores the full openDucker FX rack into the openDucker 2 interface.
 
-- 16 selectable curves with a draggable slope handle, one-cycle waveform display, and curve arrows.
-- Length 1/8, 1/4, 1/2 and 1/1 locked to the host tempo.
-- SYNC, MIDI and AUDIO triggers. MIDI restarts the curve on note-on to the sample; Audio listens to an optional sidechain input (or the main input) with an adjustable threshold. Retrigger and Shift controls included.
-- Mix knob, plus BAND mode that ducks only the low band (30 Hz–1 kHz Linkwitz-Riley split) with a headphone solo.
-- Trigger smoothing options, resizable editor, and a new yellow-on-charcoal interface.
-- Removed: the v1 Amount knob, Hold/Recovery/Phase, effects section (delay, reverb, sustain, destroy), and mascot artwork.
+- **Restored FX chain:** Tempo-synced Delay (`1/32` to `1 bar`, Mono / Ping-pong, Feedback, Bass & Treble EQ shelves), modulated stereo Reverb (`Room`, `Hall`, `Plate`, 0.2–25 s decay, Width, Bass & Treble EQ shelves), Sustain compression, Destroy bitcrush/stutter/drive (`Tail` / `Always`), FX Mix, and Output trim (−24 to +12 dB) with live peak meter.
+- **Flexible ducking & FX routing:** Duck `Dry`, `Wet`, or `Both` (`Before FX` or `After FX`), and run Delay + Reverb in `Serial` or `Parallel`.
+- **Collapsible 3-card FX rack:** Integrated across the bottom of the 1000 px wide openDucker 2 layout with a `Hide FX` / `Show FX` toggle button alongside the BAND controls.
+- **Full v2.0.0 ducker capabilities preserved:** 16 curves, draggable slope handle, dual input/output waveform display, SYNC / MIDI / AUDIO triggers with sidechain support, Retrigger, Shift, BAND Linkwitz-Riley low-end split with solo, and the animated DJ Duck booth.
 
-v1 sessions load, but v1 settings are not carried over because the parameters have changed. New screenshots in the README are captures of the running editor.
+v2.0.0 sessions recall cleanly with FX disabled by default so existing sessions sound identical on upgrade.
 
 Install the macOS universal VST3/AU or Windows x64 VST3 ZIP, or update through OpenVST Manager. Close your DAW before replacing the plugin and rescan afterward. SHA256SUMS.txt covers both archives. macOS bundles are ad-hoc signed; Windows binaries have no publisher certificate. No commercial-DAW listening session is claimed; see docs/VERIFICATION.md for executed checks.

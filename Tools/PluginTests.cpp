@@ -168,7 +168,6 @@ template<typename Sample> void testBand() {
         return output;
     };
     const auto full = run(false, false, true), banded = run(true, false, true), soloed = run(true, true, false);
-    // Gate curve: fully ducked from 8% of each cycle onward. Measure inside the cycle's ducked region.
     const auto bass = [](const std::vector<double>& s) { return tone(s, 50, 9600, 21600); };
     const auto treble = [](const std::vector<double>& s) { return tone(s, 5000, 9600, 21600); };
     require(bass(full) < 0.02 && treble(full) < 0.02, "Full-band ducking leaves signal at the bottom of the curve");
@@ -176,6 +175,241 @@ template<typename Sample> void testBand() {
     require(treble(banded) > 0.36 && treble(banded) < 0.44, "Band mode ducks the treble");
     require(tone(soloed, 50, 9600, 21600) > 0.36, "Band solo removes the bass");
     require(tone(soloed, 5000, 9600, 21600) < 0.02, "Band solo leaks the treble");
+}
+template<typename Sample> void testEffectsRouting() {
+    const double midGain = duck::cycleGain(duck::defaultCurve, 0.5, 1);
+    for(int target = 0; target < 3; ++target) for(int position = 0; position < 2; ++position) {
+        DuckerProcessor p;
+        set(p, "fxEnabled", 1); set(p, "delayEnabled", 1); set(p, "reverbEnabled", 0); set(p, "delayMode", 0);
+        set(p, "delayLength", 2); set(p, "delayFeedback", 0); set(p, "fxMix", 50); set(p, "mix", 100); set(p, "smoothing", 0);
+        set(p, "duckTarget", static_cast<float>(target)); set(p, "duckPosition", static_cast<float>(position));
+        p.prepareToPlay(48000, 256);
+        Host host; host.position.setIsPlaying(true); host.position.setBpm(120);
+        p.setPlayHead(&host); juce::MidiBuffer midi;
+        juce::AudioBuffer<Sample> warm(2, 24000); warm.clear(); host.position.setPpqPosition(-1); p.processBlock(warm, midi);
+        juce::AudioBuffer<Sample> audio(2, 12001); audio.clear(); audio.setSample(0, 0, Sample {1}); audio.setSample(1, 0, Sample {1});
+        host.position.setPpqPosition(0); p.processBlock(audio, midi);
+        const double expectedDry = target == 1 ? 0.5 : 0;
+        const double expectedWet = target == 0 ? 0.5 : (position == 0 ? 0 : 0.5 * midGain);
+        require(std::abs(audio.getSample(0, 0) - expectedDry) < 1e-5, "Dry routing ducks the wrong branch");
+        require(std::abs(audio.getSample(0, 12000) - expectedWet) < 1e-4, "Wet routing has wrong placement or gain");
+        require(std::abs(audio.getSample(0, 12000) - audio.getSample(1, 12000)) < 1e-7, "Mono delay changes stereo link");
+        set(p, "bypass", 1); warm.clear(); host.position.setPpqPosition(0.6); p.processBlock(warm, midi);
+        audio.setSize(2, 256); audio.clear(); audio.setSample(0, 0, Sample {0.5}); audio.setSample(1, 0, Sample {-0.25});
+        p.processBlock(audio, midi);
+        require(std::abs(audio.getSample(0, 0) - 0.5) < 1e-7 && std::abs(audio.getSample(1, 0) + 0.25) < 1e-7, "Global bypass does not pass original audio");
+        p.setPlayHead(nullptr);
+    }
+    DuckerProcessor restored;
+    for(auto* parameter : restored.getParameters()) {
+        const bool original = parameter->getParameterIndex() < 13;
+        require(original ? parameter->getVersionHint() == 1 : parameter->getVersionHint() > 1, "New parameters can reorder saved AU automation");
+    }
+    restored.parameters.getParameter("fxEnabled")->setValueNotifyingHost(1);
+    juce::ValueTree old {"openDucker"};
+    for(const auto* id : {"mix", "curve", "rate", "length", "shift", "trigger", "retrigger", "threshold", "smoothing", "bandOn", "bandFrequency", "bandSolo", "bypass"}) {
+        auto* parameter = restored.parameters.getParameter(id);
+        juce::ValueTree value {"PARAM"};
+        value.setProperty("id", id, nullptr);
+        value.setProperty("value", parameter->convertFrom0to1(parameter->getDefaultValue()), nullptr);
+        old.addChild(value, -1, nullptr);
+    }
+    juce::MemoryBlock data; juce::AudioProcessor::copyXmlToBinary(*old.createXml(), data);
+    restored.setStateInformation(data.getData(), static_cast<int>(data.getSize()));
+    require(restored.parameters.getRawParameterValue("fxEnabled")->load() < 0.5f, "Old sessions inherit enabled effects");
+    require(restored.getTailLengthSeconds() < 1e-12, "Disabled effects report a tail");
+    restored.parameters.getParameter("fxEnabled")->setValueNotifyingHost(1);
+    restored.parameters.getParameter("reverbLength")->setValueNotifyingHost(1);
+    require(restored.getTailLengthSeconds() >= 25, "Host may truncate long reverb tails");
+}
+template<typename Sample> void testFxMatrix() {
+    for(int effect = 0; effect < 6; ++effect) for(int target = 0; target < 3; ++target) for(int position = 0; position < 2; ++position) {
+        DuckerProcessor routed, clean, pre; Host host; host.position.setIsPlaying(true); host.position.setBpm(120);
+        for(auto* p : {&routed, &clean, &pre}) {
+            set(*p, "fxEnabled", 1); set(*p, "delayEnabled", effect == 0 || effect >= 4 ? 1.0f : 0.0f);
+            set(*p, "reverbEnabled", effect == 1 || effect >= 4 ? 1.0f : 0.0f);
+            set(*p, "sustain", effect == 2 ? 65.0f : 0.0f); set(*p, "destroy", effect == 3 ? 80.0f : 0.0f); set(*p, "destroyMode", 1);
+            set(*p, "fxFlow", effect == 5 ? 0.0f : 1.0f); set(*p, "delayLength", 0); set(*p, "delayFeedback", 20);
+            set(*p, "fxMix", 100); set(*p, "mix", 0); set(*p, "smoothing", 0); p->setPlayHead(&host);
+        }
+        set(routed, "fxMix", 40); set(routed, "mix", 100); set(routed, "duckTarget", static_cast<float>(target)); set(routed, "duckPosition", static_cast<float>(position));
+        for(auto* p : {&routed, &clean, &pre}) p->prepareToPlay(48000, 257);
+        duck::Engine envelope; envelope.prepare(48000); juce::MidiBuffer midi;
+        for(int start = 0; start < 48000; start += 257) {
+            const int count = std::min(257, 48000 - start); host.position.setPpqPosition(start / 24000.0);
+            envelope.beginBlock({start / 24000.0, 120, true, true}, {duck::defaultCurve, 1, 0, 1.0, 0.0, duck::Trigger::Sync, true});
+            juce::AudioBuffer<Sample> a(2, count), b(2, count), c(2, count); std::vector<double> gains;
+            for(int i = 0; i < count; ++i) {
+                const double gain = envelope.nextGain(); gains.push_back(gain);
+                for(int ch = 0; ch < 2; ++ch) {
+                    const auto x = static_cast<Sample>(0.04 * std::sin((start + i) * (ch == 0 ? 0.071 : 0.113)));
+                    a.setSample(ch, i, x); b.setSample(ch, i, x); c.setSample(ch, i, static_cast<Sample>(x * gain));
+                }
+            }
+            auto dry = a; routed.processBlock(a, midi); clean.processBlock(b, midi); pre.processBlock(c, midi);
+            for(int i = 0; i < count; ++i) for(int ch = 0; ch < 2; ++ch) {
+                const auto gain = gains[static_cast<size_t>(i)];
+                const double wet = target == 0 ? b.getSample(ch, i) : position == 0 ? c.getSample(ch, i) : b.getSample(ch, i) * gain;
+                const double expected = 0.6 * dry.getSample(ch, i) * (target == 1 ? 1 : gain) + 0.4 * wet;
+                require(std::abs(a.getSample(ch, i) - expected) < 2e-5, "Clean/ducked FX matrix leaks or ducks the wrong path");
+            }
+        }
+        for(auto* p : {&routed, &clean, &pre}) p->setPlayHead(nullptr);
+    }
+    std::cout << "PASS all clean/ducked routes for Delay, Reverb, Sustain, Destroy, Parallel and Serial\n";
+}
+void testNewFxModes() {
+    DuckerProcessor p; set(p, "fxFlow", 1); set(p, "destroyMode", 1);
+    set(p, "fxEnabled", 1); set(p, "delayEnabled", 0); set(p, "reverbEnabled", 0); set(p, "destroy", 100); set(p, "fxMix", 100); set(p, "mix", 0);
+    p.prepareToPlay(48000, 256); juce::MidiBuffer midi; juce::AudioBuffer<double> buffer(2, 24000);
+    double difference = 0;
+    for(int i = 0; i < 24000; ++i) { buffer.setSample(0, i, 0.1 * std::sin(i * 0.13)); buffer.setSample(1, i, 0.1 * std::sin(i * 0.13)); }
+    p.processBlock(buffer, midi);
+    for(int i = 12000; i < 24000; ++i) difference += std::abs(buffer.getSample(0, i) - 0.1 * std::sin(i * 0.13));
+    require(difference > 10 && p.destroyLevel.load() > 0.9, "Always Destroy is inaudible on sustained input without time effects");
+    require(p.getTailLengthSeconds() >= 0.035, "Host may truncate standalone Destroy stutters");
+    set(p, "delayEnabled", 1); set(p, "reverbEnabled", 1); set(p, "destroy", 0); set(p, "delayFeedback", 0);
+    p.prepareToPlay(48000, 256); buffer.setSize(2, 4800); buffer.clear(); buffer.setSample(0, 0, 1); buffer.setSample(1, 0, 1); p.processBlock(buffer, midi);
+    require(buffer.getMagnitude(0, buffer.getNumSamples()) > 0.01, "Parallel reverb waits for the quarter-note delay");
+    require(std::abs(buffer.getSample(0, 0)) < 1e-12, "Fully wet parallel FX leaks dry audio");
+    auto legacy = p.parameters.copyState();
+    for(const auto* id : {"fxFlow", "destroyMode"}) legacy.removeChild(legacy.getChildWithProperty("id", id), nullptr);
+    juce::MemoryBlock state; juce::AudioProcessor::copyXmlToBinary(*legacy.createXml(), state);
+    p.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+    require(p.parameters.getRawParameterValue("fxFlow")->load() < 0.5 && p.parameters.getRawParameterValue("destroyMode")->load() < 0.5, "Legacy sessions lose Serial/Tail modes");
+    std::cout << "PASS audible FX modes and legacy session defaults\n";
+}
+template<typename Sample> void testStandaloneSustain() {
+    DuckerProcessor p;
+    for(const auto& [id, value] : std::initializer_list<std::pair<const char*, float>> {
+        {"fxEnabled", 1}, {"delayEnabled", 0}, {"reverbEnabled", 0}, {"sustain", 100}, {"fxMix", 100}, {"mix", 0}}) set(p, id, value);
+    p.prepareToPlay(48000, 256); juce::MidiBuffer midi;
+    juce::AudioBuffer<Sample> audio(2, 48000);
+    for(int i = 0; i < audio.getNumSamples(); ++i) {
+        audio.setSample(0, i, static_cast<Sample>(0.01 * std::sin(i * 0.13)));
+        audio.setSample(1, i, audio.getSample(0, i));
+    }
+    p.processBlock(audio, midi);
+    require(audio.getMagnitude(0, 24000, 24000) > 0.1, "Sustain is silently disabled when Delay and Reverb are off");
+    std::cout << "PASS standalone Sustain through the actual processor\n";
+}
+template<typename Sample> bool testHostReset(const char* precision) {
+    DuckerProcessor p;
+    set(p, "fxEnabled", 1); set(p, "delayEnabled", 1); set(p, "reverbEnabled", 0); set(p, "fxMix", 100);
+    set(p, "mix", 0); set(p, "delayLength", 0); set(p, "delayFeedback", 0); set(p, "delayMode", 0);
+    set(p, "duckTarget", 1); set(p, "duckPosition", 0);
+    Host host; host.position.setIsPlaying(true); host.position.setBpm(120); host.position.setPpqPosition(0); p.setPlayHead(&host);
+    p.prepareToPlay(48000, 64); juce::MidiBuffer midi;
+    juce::AudioBuffer<Sample> buffer(2, 64);
+    const auto impulse = [&] {
+        buffer.setSize(2, 64); buffer.clear(); buffer.setSample(0, 0, Sample {1}); buffer.setSample(1, 0, Sample {1}); p.processBlock(buffer, midi);
+    };
+    const auto tail = [&] {
+        buffer.setSize(2, 6000); buffer.clear(); p.processBlock(buffer, midi); return buffer.getMagnitude(0, buffer.getNumSamples());
+    };
+    impulse(); host.position.setIsPlaying(false);
+    require(tail() > 0.9, "Stopping transport discards the delay tail");
+    require(p.outputPeak.load() > 0.9f, "Reset regression did not populate the meter");
+    impulse();
+    std::vector<float> values;
+    for(auto* parameter : p.getParameters()) values.push_back(parameter->getValue());
+    juce::AudioProcessor& hostProcessor = p; hostProcessor.reset();
+    const double peak = tail();
+    std::cout << precision << " silent output peak after host reset=" << peak << '\n';
+    for(int i = 0; i < p.getParameters().size(); ++i)
+        require(std::abs(p.getParameters()[i]->getValue() - values[static_cast<size_t>(i)]) < 1e-7f, "Host reset changes parameters or routing");
+    if(!std::isfinite(peak) || peak > 0) return false;
+    require(p.outputPeak.load() <= 0 && p.destroyLevel.load() <= 0, "Host reset leaves stale effect meters");
+    impulse(); require(tail() > 0.9, "Host reset disables configured effects");
+    p.setPlayHead(nullptr);
+    return true;
+}
+template<typename Sample> void testMonoAndDisabledEffects() {
+    DuckerProcessor p;
+    juce::AudioProcessor::BusesLayout buses; buses.inputBuses = {juce::AudioChannelSet::mono(), juce::AudioChannelSet::disabled()};
+    buses.outputBuses = {juce::AudioChannelSet::mono()};
+    require(p.setBusesLayout(buses), "Mono layout rejected");
+    set(p, "fxEnabled", 1); set(p, "delayEnabled", 1); set(p, "reverbEnabled", 0); set(p, "fxMix", 100);
+    set(p, "mix", 0); set(p, "smoothing", 0); set(p, "delayLength", 0); set(p, "delayFeedback", 0); set(p, "delayMode", 1);
+    p.prepareToPlay(48000, 256); juce::MidiBuffer midi;
+    Host host; host.position.setIsPlaying(true); host.position.setBpm(120); host.position.setPpqPosition(-1); p.setPlayHead(&host);
+    juce::AudioBuffer<Sample> buffer(1, 24000); buffer.clear(); buffer.setSample(0, 0, Sample {1}); p.processBlock(buffer, midi);
+    require(std::abs(buffer.getSample(0, 0)) < 1e-7, "Prepared fully wet preset leaks dry input at startup");
+    buffer.setSize(1, 3001); buffer.clear(); buffer.setSample(0, 0, Sample {1}); host.position.setPpqPosition(0); p.processBlock(buffer, midi);
+    require(std::abs(buffer.getSample(0, 3000) - 0.5) < 1e-6, "Mono output loses ping-pong echo");
+    require(std::abs(p.outputPeak.load() - 0.5f) < 1e-5f, "Mono peak meter does not measure the actual output");
+    set(p, "delayEnabled", 0); set(p, "duckTarget", 1); set(p, "mix", 100); set(p, "smoothing", 0);
+    buffer.setSize(1, 24000); buffer.clear(); host.position.setPpqPosition(1); p.processBlock(buffer, midi);
+    for(int i = 0; i < buffer.getNumSamples(); ++i) buffer.setSample(0, i, Sample {1});
+    host.position.setPpqPosition(2); p.processBlock(buffer, midi);
+    require(std::abs(buffer.getSample(0, 0)) < 1e-7, "Both FX off does not restore original ducking");
+    require(std::abs(buffer.getSample(0, 12000) - duck::cycleGain(duck::defaultCurve, 0.5, 1)) < 1e-6, "FX Mix changes ducking gain with both FX off");
+    require(p.getTailLengthSeconds() < 1e-9, "Both FX off reports a tail");
+    p.setPlayHead(nullptr);
+}
+void testEqDetents(DuckerProcessor& p, juce::AudioProcessorEditor& editor) {
+    for(const auto* id : {"delayBass", "delayTreble", "reverbBass", "reverbTreble"}) {
+        auto* knob = dynamic_cast<juce::Slider*>(find(editor, id)); require(knob != nullptr, "EQ knob missing");
+        auto* parameter = p.parameters.getParameter(id);
+        const auto start = knob->getLocalBounds().toFloat().getCentre();
+        const auto time = juce::Time::getCurrentTime();
+        const auto event = [&](float distance, bool dragged) {
+            return juce::MouseEvent {juce::Desktop::getInstance().getMainMouseSource(), start + juce::Point<float> {distance, 0},
+                juce::ModifierKeys {juce::ModifierKeys::leftButtonModifier}, 1, 0, 0, 0, 0, knob, knob, time, start, time, 1, dragged};
+        };
+        for(const double direction : {1.0, -1.0}) {
+            const double initial = -direction * 0.8;
+            knob->setValue(initial, juce::sendNotificationSync); knob->mouseDown(event(0, false));
+            for(const double attempted : {-direction * 0.1, direction * 0.1, direction * 0.8}) {
+                const float distance = static_cast<float>((attempted - initial) / (knob->getMaximum() - knob->getMinimum()) * knob->getMouseDragSensitivity());
+                knob->mouseDrag(event(distance, true));
+                const double expected = std::abs(attempted) < 0.2 ? 0 : attempted;
+                require(std::abs(knob->getValue() - expected) < 0.011, "EQ drag misses the zero detent or cannot leave it");
+                require(std::abs(p.parameters.getRawParameterValue(id)->load() - expected) < 0.011, "EQ detent does not update its parameter");
+            }
+            knob->mouseUp(event(0, true));
+        }
+        for(const float value : {-0.1f, 0.1f}) {
+            parameter->setValueNotifyingHost(parameter->convertTo0to1(value));
+            require(std::abs(knob->getValue() - value) < 0.011 && std::abs(p.parameters.getRawParameterValue(id)->load() - value) < 0.011, "EQ detent quantizes host automation");
+            require(std::abs(knob->snapValue(value, juce::Slider::notDragging) - value) < 1e-7, "EQ detent changes non-drag input");
+        }
+        knob->mouseDoubleClick(event(0, false)); require(std::abs(knob->getValue()) < 0.011, "EQ double-click default changed");
+    }
+    for(const auto* id : {"delayLength", "delayFeedback", "reverbLength", "reverbWidth", "sustain", "destroy", "fxMix", "output"}) {
+        auto* knob = dynamic_cast<juce::Slider*>(find(editor, id)); require(knob != nullptr, "Non-EQ knob missing");
+        require(std::abs(knob->snapValue(0.1, juce::Slider::absoluteDrag) - 0.1) < 1e-7, "EQ detent changes a non-EQ knob");
+    }
+    std::cout << "PASS EQ zero detents in both drag directions, continuous host automation and double-click defaults\n";
+}
+void testEffectsControls(DuckerProcessor& p, juce::AudioProcessorEditor& editor) {
+    const std::array<const char*, 12> knobs {"delayLength", "delayFeedback", "delayBass", "delayTreble", "reverbLength", "reverbWidth", "reverbBass", "reverbTreble", "sustain", "destroy", "fxMix", "output"};
+    for(const auto* id : knobs) {
+        auto* knob = dynamic_cast<juce::Slider*>(find(editor, id)); require(knob != nullptr, "Effects knob missing");
+        auto* parameter = p.parameters.getParameter(id);
+        knob->setValue(parameter->convertFrom0to1(0.8f), juce::sendNotificationSync);
+        require(std::abs(knob->getValue() - p.parameters.getRawParameterValue(id)->load()) < 0.011, "Effects knob disconnected");
+    }
+    for(const auto* id : {"duckTarget", "duckPosition", "delayMode", "reverbType", "fxFlow", "destroyMode"}) {
+        auto* choice = dynamic_cast<juce::ComboBox*>(find(editor, id)); require(choice != nullptr, "Effects selector missing");
+        for(int i = 1; i <= choice->getNumItems(); ++i) {
+            choice->setSelectedId(i, juce::sendNotificationSync);
+            require(std::abs(p.parameters.getRawParameterValue(id)->load() - static_cast<float>(i - 1)) < 0.01f, "Effects selector disconnected");
+        }
+    }
+    auto* target = dynamic_cast<juce::ComboBox*>(find(editor, "duckTarget"));
+    auto* position = find(editor, "duckPosition"); target->setSelectedId(1, juce::sendNotificationSync);
+    require(!position->isEnabled(), "Dry-only leaves meaningless position switch enabled");
+    target->setSelectedId(3, juce::sendNotificationSync); require(position->isEnabled(), "Both does not restore position switch");
+    for(const auto* id : {"fxEnabled", "delayEnabled", "reverbEnabled"}) {
+        auto* button = dynamic_cast<juce::TextButton*>(find(editor, id)); require(button != nullptr, "Effects switch missing");
+        button->setToggleState(false, juce::sendNotificationSync); require(p.parameters.getRawParameterValue(id)->load() < 0.5f, "Effect cannot turn off");
+        button->setToggleState(true, juce::sendNotificationSync); require(p.parameters.getRawParameterValue(id)->load() > 0.5f, "Effect cannot turn on");
+    }
+    auto* toggle = dynamic_cast<juce::TextButton*>(find(editor, "effectsToggle")); require(toggle != nullptr, "Effects collapse missing");
+    toggle->onClick(); require(editor.getHeight() == 510 && !find(editor, "reverbType")->isShowing(), "Effects panel does not collapse");
+    require(p.parameters.getRawParameterValue("fxEnabled")->load() > 0.5f, "Collapsing panel disables audio");
+    toggle->onClick(); require(editor.getHeight() == 724, "Effects panel does not expand");
 }
 void testControls(DuckerProcessor& p, juce::AudioProcessorEditor& editor) {
     auto& mix = control<juce::Slider>(editor, "mix");
@@ -237,15 +471,25 @@ int main(int argc, char** argv) {
     juce::ScopedJuceInitialiser_GUI gui;
     try {
         testSync<float>(); testSync<double>(); testTriggers<float>(); testTriggers<double>(); testBand<float>(); testBand<double>();
+        testStandaloneSustain<float>(); testStandaloneSustain<double>(); testNewFxModes();
+        testFxMatrix<float>(); testFxMatrix<double>();
+        testEffectsRouting<float>(); testEffectsRouting<double>();
+        testMonoAndDisabledEffects<float>(); testMonoAndDisabledEffects<double>();
+        const bool floatReset = testHostReset<float>("float"), doubleReset = testHostReset<double>("double");
+        require(floatReset && doubleReset, "Host reset leaves an audible effects tail");
+
         const juce::File output = argc > 1 ? juce::File::getCurrentWorkingDirectory().getChildFile(argv[1]) : juce::File::getCurrentWorkingDirectory();
         output.createDirectory();
         Host host; host.position.setIsPlaying(true); host.position.setBpm(128); host.position.setPpqPosition(0);
         DuckerProcessor p; p.setPlayHead(&host); p.prepareToPlay(sampleRate, 512);
         std::unique_ptr<juce::AudioProcessorEditor> editor(p.createEditor());
-        editor->setSize(1000, 510);
+        editor->setSize(1000, 724);
         testControls(p, *editor);
+        testEffectsControls(p, *editor);
+        testEqDetents(p, *editor);
+        for(auto* parameter : p.getParameters()) parameter->setValueNotifyingHost(parameter->getDefaultValue());
         for(const auto& [id, value] : std::initializer_list<std::pair<const char*, float>> {{"rate", 1}, {"trigger", 0}, {"curve", 2}, {"mix", 79},
-            {"shift", 0}, {"threshold", -24}, {"retrigger", 1}, {"bandFrequency", 150}, {"smoothing", 1}, {"length", 100}}) set(p, id, value);
+            {"shift", 0}, {"threshold", -24}, {"retrigger", 1}, {"bandFrequency", 150}, {"smoothing", 1}, {"length", 100}, {"fxEnabled", 1}}) set(p, id, value);
         p.reset(); render<float>(p, host, 0, 22500 * 2, false);
         save(*editor, output, "openDucker-sync.png");
         const auto image = editor->createComponentSnapshot(editor->getLocalBounds());
@@ -262,9 +506,9 @@ int main(int argc, char** argv) {
         DuckerProcessor restored; restored.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
         for(auto* parameter : p.getParameters()) {
             const auto* identified = dynamic_cast<juce::AudioProcessorParameterWithID*>(parameter);
-            require(identified != nullptr && restored.parameters.getParameter(identified->paramID)->getValue() == parameter->getValue(), "Session recall misses a parameter");
+            require(identified != nullptr && std::abs(restored.parameters.getParameter(identified->paramID)->getValue() - parameter->getValue()) < 1e-6f, "Session recall misses a parameter");
         }
         p.setPlayHead(nullptr);
-        std::cout << "PASS float/double sync, mix, bypass, MIDI and audio triggers, sidechain layout, band split and solo, all native controls, session recall and screenshots\n";
+        std::cout << "PASS float/double sync, mix, bypass, MIDI and audio triggers, sidechain layout, band split and solo, FX routing/matrix/reset, all native controls, session recall and screenshots\n";
     } catch(const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

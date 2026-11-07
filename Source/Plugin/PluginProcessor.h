@@ -2,6 +2,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "Crossover.h"
 #include "Ducker.h"
+#include "Effects.h"
 #include "TransientDetector.h"
 
 class DuckerProcessor final : public juce::AudioProcessor {
@@ -22,7 +23,7 @@ public:
     const juce::String getName() const override { return "openDucker"; }
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
-    double getTailLengthSeconds() const override { return 0; }
+    double getTailLengthSeconds() const override;
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
     void setCurrentProgram(int) override {}
@@ -36,19 +37,28 @@ public:
     /// Peak of the input and output at each position of the cycle, for the display.
     std::array<std::atomic<float>, displayBins> inputBins, outputBins;
     std::atomic<float> visualPhase {0}, visualGain {1}, hostBpm {0};
+    std::atomic<float> outputPeak {0}, destroyLevel {0};
     std::atomic<bool> visualRunning {false};
     std::atomic<int> syncState {0}; // 0: unavailable, 1: stopped, 2: playing
 
 private:
     enum Id { Mix, Curve, Rate, Length, Shift, TriggerMode, Retrigger, Threshold, Smoothing, BandOn, BandFrequency, BandSolo, Bypass, IdCount };
+    enum FxParameter { FxEnabled, DuckTarget, DuckPosition, FxMix, DelayEnabled, DelayLength,
+        DelayFeedback, DelayBass, DelayTreble, DelayMode, ReverbEnabled, ReverbType,
+        ReverbLength, ReverbWidth, ReverbBass, ReverbTreble, Sustain, Destroy, Output, FxFlow, DestroyMode, FxCount };
     static juce::AudioProcessorValueTreeState::ParameterLayout layout();
     template<typename Sample> void process(juce::AudioBuffer<Sample>&, juce::MidiBuffer&, bool bypassed);
     float value(Id id) const noexcept { return values[id]->load(std::memory_order_relaxed); }
+    float fx(FxParameter id) const noexcept { return fxParameters[id]->load(std::memory_order_relaxed); }
     duck::Engine engine;
     duck::Crossover crossover;
     duck::TransientDetector detector;
+    duck::Effects effects;
     std::array<std::atomic<float>*, IdCount> values {};
-    juce::SmoothedValue<double> mixAmount, bandBlend, soloBlend, activeBlend;
+    std::array<std::atomic<float>*, FxCount> fxParameters {};
+    juce::SmoothedValue<double> mixAmount, bandBlend, soloBlend, dryDuck, wetPreDuck, wetPostDuck, fxBlend, wetMix, outputGain, activeBlend;
+    std::atomic<bool> resetEffects {false};
+    bool effectsRunning = false;
     double sampleRate = 48000, bandFrequency = -1;
     int lastBin = -1;
     float binInput = 0, binOutput = 0;

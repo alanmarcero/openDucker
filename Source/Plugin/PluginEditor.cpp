@@ -4,6 +4,8 @@
 
 namespace {
 constexpr float pi = juce::MathConstants<float>::pi;
+constexpr int collapsedHeight = 510;
+constexpr int expandedHeight = 724;
 
 void drawText(juce::Graphics& g, const juce::String& value, juce::Rectangle<float> bounds, float size, juce::Colour colour,
     juce::Justification alignment = juce::Justification::centred, bool bold = true) {
@@ -35,6 +37,10 @@ juce::Path curvePath(int curve, juce::Rectangle<float> area, int points) {
 }
 
 DuckLookAndFeel::DuckLookAndFeel() {
+    setColour(juce::ComboBox::backgroundColourId, look::panel);
+    setColour(juce::ComboBox::textColourId, look::paper);
+    setColour(juce::ComboBox::outlineColourId, juce::Colours::transparentBlack);
+    setColour(juce::ComboBox::arrowColourId, look::mint);
     setColour(juce::PopupMenu::backgroundColourId, look::panel);
     setColour(juce::PopupMenu::textColourId, look::paper);
     setColour(juce::PopupMenu::highlightedBackgroundColourId, look::mint);
@@ -46,7 +52,52 @@ DuckLookAndFeel::DuckLookAndFeel() {
     setColour(juce::TextButton::buttonColourId, look::panel);
 }
 
+void DuckLookAndFeel::drawComboBox(juce::Graphics& g, int width, int height, bool, int, int, int, int, juce::ComboBox& box) {
+    const juce::Rectangle<float> bounds {0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height)};
+    const float corner = bounds.getHeight() * 0.25f;
+    g.setColour(look::panel);
+    g.fillRoundedRectangle(bounds, corner);
+    g.setColour(look::muted.withAlpha(0.28f));
+    g.drawRoundedRectangle(bounds.reduced(0.5f), corner, 1.0f);
+
+    const float arrowX = bounds.getRight() - bounds.getHeight() * 0.55f;
+    const float arrowY = bounds.getCentreY();
+    const float arrowSize = bounds.getHeight() * 0.14f;
+    juce::Path arrow;
+    arrow.startNewSubPath(arrowX - arrowSize, arrowY - arrowSize * 0.5f);
+    arrow.lineTo(arrowX, arrowY + arrowSize * 0.6f);
+    arrow.lineTo(arrowX + arrowSize, arrowY - arrowSize * 0.5f);
+    g.setColour(box.isEnabled() ? look::mint : look::muted.withAlpha(0.4f));
+    g.strokePath(arrow, juce::PathStrokeType(1.8f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+}
+
 void DuckLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int width, int height, float value, float start, float end, juce::Slider& slider) {
+    if(slider.getComponentID() != "mix") {
+        const float s = static_cast<float>(height) / 104.0f;
+        const juce::Point<float> centre {static_cast<float>(x) + static_cast<float>(width) * 0.5f, static_cast<float>(y) + 28.0f * s};
+        const float radius = 21.5f * s;
+        const float angle = start + value * (end - start);
+        const float origin = slider.getMinimum() < 0 ? start + (end - start) * static_cast<float>(slider.valueToProportionOfLength(0)) : start;
+        juce::Path track, arc;
+        track.addCentredArc(centre.x, centre.y, radius, radius, 0, start, end, true);
+        arc.addCentredArc(centre.x, centre.y, radius, radius, 0, origin, angle, true);
+        g.setColour(look::panel.darker(0.35f));
+        g.strokePath(track, juce::PathStrokeType(3.0f * s, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.setColour(look::mint);
+        g.strokePath(arc, juce::PathStrokeType(3.0f * s, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        const juce::Rectangle<float> body {centre.x - 16.5f * s, centre.y - 16.5f * s, 33.0f * s, 33.0f * s};
+        g.setGradientFill(juce::ColourGradient(look::panel.brighter(0.25f), body.getTopLeft(), look::background.darker(0.3f), body.getBottomRight(), false));
+        g.fillEllipse(body);
+        g.setColour(look::muted.withAlpha(0.3f));
+        g.drawEllipse(body, 1.0f);
+        const auto direction = juce::Point<float>(std::sin(angle), -std::cos(angle));
+        g.setColour(look::yellow);
+        g.drawLine({centre + direction * (9.5f * s), centre + direction * (15.5f * s)}, 2.0f * s);
+        drawText(g, slider.getTextFromValue(slider.getValue()), {static_cast<float>(x), static_cast<float>(y) + 55.0f * s, static_cast<float>(width), 19.0f * s}, 12.5f * s, look::paper, juce::Justification::centred, true);
+        drawText(g, slider.getName(), {static_cast<float>(x), static_cast<float>(y) + 75.0f * s, static_cast<float>(width), 17.0f * s}, 11.5f * s, look::muted, juce::Justification::centred, false);
+        return;
+    }
+
     const float labelHeight = static_cast<float>(height) * 0.16f;
     const auto knobArea = juce::Rectangle<float>(static_cast<float>(x), static_cast<float>(y), static_cast<float>(width), static_cast<float>(height) - labelHeight);
     const float diameter = std::min(knobArea.getWidth(), knobArea.getHeight());
@@ -61,7 +112,7 @@ void DuckLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int widt
     fill.addCentredArc(centre.x, centre.y, arcRadius, arcRadius, 0, start, angle, true);
     g.setColour(look::panel.darker(0.35f));
     g.strokePath(track, juce::PathStrokeType(thickness, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-    
+
     // Filled arc with subtle glow
     glow(g, bounds.expanded(thickness * 0.8f), look::mint.withAlpha(0.18f * value));
     g.setColour(look::mint);
@@ -261,7 +312,7 @@ void CurveDisplay::mouseDoubleClick(const juce::MouseEvent& e) {
 void CurveDisplay::paint(juce::Graphics& g) {
     const auto bounds = getLocalBounds().toFloat();
     const float width = bounds.getWidth(), height = bounds.getHeight();
-    
+
     // Background screen
     g.setColour(look::display);
     g.fillRoundedRectangle(bounds, 6);
@@ -283,7 +334,7 @@ void CurveDisplay::paint(juce::Graphics& g) {
         const float x = static_cast<float>(bin) * binWidth;
         const float input = juce::jlimit(0.0f, 1.0f, owner.inputBins[static_cast<size_t>(bin)].load(std::memory_order_relaxed));
         const float output = juce::jlimit(0.0f, 1.0f, owner.outputBins[static_cast<size_t>(bin)].load(std::memory_order_relaxed));
-        
+
         // Input waveform in muted slate
         g.setColour(look::muted.withAlpha(0.45f));
         g.fillRect(x, middle - input * height * 0.42f, std::max(1.0f, binWidth - 0.5f), std::max(1.0f, input * height * 0.84f));
@@ -309,7 +360,7 @@ void CurveDisplay::paint(juce::Graphics& g) {
         if(px == 0) path.startNewSubPath(x, y); else path.lineTo(x, y);
     }
     path.lineTo(width - 1, curveArea.getBottom() - static_cast<float>(duck::cycleGain(curve, 0, length)) * curveArea.getHeight());
-    
+
     // Glowing stroke
     glow(g, bounds, look::yellow.withAlpha(0.06f));
     g.setColour(look::yellow);
@@ -333,12 +384,27 @@ void CurveDisplay::paint(juce::Graphics& g) {
         g.fillRect(handle.getCentreX() + static_cast<float>(line) * 5.0f - 1, handle.getY() + 6, 2.0f, 16.0f);
 }
 
-DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(p), display(p) {
+DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(p), display(p), effectsPanel(p) {
     setLookAndFeel(&theme);
     mascot = juce::ImageCache::getFromMemory(BinaryData::djduck_png, BinaryData::djduck_pngSize);
     faceplate = juce::ImageCache::getFromMemory(BinaryData::analogcyberfaceplate_png, BinaryData::analogcyberfaceplate_pngSize);
-    
+
     addAndMakeVisible(display);
+    addAndMakeVisible(effectsPanel);
+    addAndMakeVisible(effectsToggle);
+    effectsToggle.setComponentID("effectsToggle");
+    effectsToggle.setButtonText("Hide FX");
+    effectsToggle.setTooltip("Show or hide the effects controls. Audio processing stays active.");
+    effectsToggle.onClick = [this] {
+        effectsExpanded = !effectsExpanded;
+        effectsPanel.setVisible(effectsExpanded);
+        effectsToggle.setButtonText(effectsExpanded ? "Hide FX" : "Show FX");
+        const int targetHeight = effectsExpanded ? expandedHeight : collapsedHeight;
+        const double ratio = 1000.0 / static_cast<double>(targetHeight);
+        setResizeLimits(600, juce::roundToInt(600.0 / ratio), 2000, targetHeight * 2);
+        getConstrainer()->setFixedAspectRatio(ratio);
+        setSize(getWidth(), juce::roundToInt(static_cast<double>(getWidth()) / ratio));
+    };
 
     mix.setComponentID("mix"); mix.setName("Mix");
     mix.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag); mix.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
@@ -413,9 +479,9 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
         }, nullptr);
     rateAttachment->sendInitialUpdate(); triggerAttachment->sendInitialUpdate(); curveAttachment->sendInitialUpdate();
     setResizable(true, true);
-    setResizeLimits(600, 306, 2000, 1020);
-    getConstrainer()->setFixedAspectRatio(1000.0 / 510.0);
-    setSize(1000, 510);
+    setResizeLimits(600, 434, 2000, expandedHeight * 2);
+    getConstrainer()->setFixedAspectRatio(1000.0 / static_cast<double>(expandedHeight));
+    setSize(1000, expandedHeight);
     startTimerHz(30);
 }
 
@@ -468,7 +534,8 @@ void DuckerEditor::showMenu() {
 
 void DuckerEditor::timerCallback() {
     display.repaint();
-    repaint(0, 0, getWidth() * 35 / 100, getHeight() * 55 / 100);
+    effectsPanel.refresh();
+    repaint(0, 0, getWidth() * 35 / 100, juce::roundToInt(280.0f * static_cast<float>(getWidth()) / 1000.0f));
 }
 
 void DuckerEditor::resized() {
@@ -477,10 +544,11 @@ void DuckerEditor::resized() {
         return juce::Rectangle<float>(x * s, y * s, w * s, h * s).toNearestInt();
     };
 
-    // Left column: DJ Duck is at y=56..240, Mix knob at y=244..424, Band section at y=430..498
+    // Left column: DJ Duck is at y=56..240, Mix knob at y=244..424, Band & FX toggle section at y=430..498
     mix.setBounds(area(70, 244, 204, 180));
     bandButton.setBounds(area(22, 434, 76, 30));
     solo.setBounds(area(104, 434, 38, 30));
+    effectsToggle.setBounds(area(242, 434, 86, 30));
     band.setBounds(area(22, 472, 306, 26));
 
     // Right column
@@ -500,6 +568,8 @@ void DuckerEditor::resized() {
 
     for(size_t i = 0; i < curveButtons.size(); ++i)
         curveButtons[i]->setBounds(area(354 + static_cast<float>(i % 8) * 79, i < 8 ? 398 : 450, 74, 44));
+
+    effectsPanel.setBounds(area(22, 516, 962, 198));
 }
 
 void DuckerEditor::paintDuckBooth(juce::Graphics& g, juce::Rectangle<float> area, float s) {
@@ -585,5 +655,6 @@ void DuckerEditor::paint(juce::Graphics& g) {
 
     // Subtle divider between left column and right tools
     g.setColour(look::muted.withAlpha(0.18f));
-    g.drawVerticalLine(juce::roundToInt(342 * s), 16 * s, static_cast<float>(getHeight()) - 16 * s);
+    g.drawVerticalLine(juce::roundToInt(342 * s), 16 * s, 498 * s);
+    if(effectsExpanded) g.drawHorizontalLine(juce::roundToInt(508 * s), 22 * s, 984 * s);
 }
