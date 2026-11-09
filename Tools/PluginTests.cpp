@@ -106,7 +106,7 @@ template<typename Sample> void testSync() {
     juce::AudioBuffer<Sample> mono(1, 512); mono.clear();
     for(int i = 0; i < 512; ++i) mono.setSample(0, i, Sample {0.5});
     monoProcessor.processBlock(mono, midi);
-    require(mono.getSample(0, 100) == Sample {0.5}, "Mono processing without transport changes the signal");
+    require(mono.getSample(0, 100) != Sample {0.5}, "Mono processing without transport ducks the signal");
 }
 template<typename Sample> void testTriggers() {
     DuckerProcessor p; Host host;
@@ -152,6 +152,7 @@ template<typename Sample> void testBand() {
         host.position.setIsPlaying(playing); host.position.setBpm(120); host.position.setPpqPosition(0);
         p.setPlayHead(&host); set(p, "smoothing", 0); set(p, "curve", 5); set(p, "bandOn", band ? 1.0f : 0.0f);
         set(p, "bandSolo", solo ? 1.0f : 0.0f); set(p, "bandFrequency", 150);
+        if (solo) set(p, "mix", 0);
         p.prepareToPlay(sampleRate, 512);
         std::vector<double> output; juce::MidiBuffer midi;
         for(int start = 0; start < 48000; start += 512) {

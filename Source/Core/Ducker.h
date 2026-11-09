@@ -41,5 +41,6 @@ private:
     Parameters parameters;
     bool syncActive = false, isRunning = false;
     int offset = 0;
+    double freePhase = 0;
 };
 }

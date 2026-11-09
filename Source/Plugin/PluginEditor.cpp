@@ -392,6 +392,12 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
     addAndMakeVisible(display);
     addAndMakeVisible(effectsPanel);
     addAndMakeVisible(effectsToggle);
+    addAndMakeVisible(pushItButton);
+    pushItButton.setComponentID("pushIt");
+    pushItButton.setTooltip("PUSH IT: trigger an impact sound to demo the ducking pump, delay, reverb, and saturation!");
+    pushItButton.onClick = [this] { owner.triggerDemoImpact(); };
+    pushItButton.setColour(juce::TextButton::buttonColourId, look::panel.brighter(0.12f));
+    pushItButton.setColour(juce::TextButton::textColourOffId, look::brightMint);
     effectsToggle.setComponentID("effectsToggle");
     effectsToggle.setButtonText("Hide FX");
     effectsToggle.setTooltip("Show or hide the effects controls. Audio processing stays active.");
@@ -548,6 +554,7 @@ void DuckerEditor::resized() {
     mix.setBounds(area(70, 244, 204, 180));
     bandButton.setBounds(area(22, 434, 76, 30));
     solo.setBounds(area(104, 434, 38, 30));
+    pushItButton.setBounds(area(148, 434, 88, 30));
     effectsToggle.setBounds(area(242, 434, 86, 30));
     band.setBounds(area(22, 472, 306, 26));
 

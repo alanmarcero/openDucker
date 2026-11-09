@@ -40,8 +40,14 @@ public:
     std::atomic<float> outputPeak {0}, destroyLevel {0};
     std::atomic<bool> visualRunning {false};
     std::atomic<int> syncState {0}; // 0: unavailable, 1: stopped, 2: playing
+    void triggerDemoImpact() noexcept { triggerDemo.store(true); }
 
 private:
+    std::atomic<bool> triggerDemo {false};
+    int demoImpactSamplesLeft = 0;
+    double demoPhase = 0;
+    uint32_t demoSeed = 0x9e3779b9;
+    float demoFilterL = 0, demoFilterR = 0;
     enum Id { Mix, Curve, Rate, Length, Shift, TriggerMode, Retrigger, Threshold, Smoothing, BandOn, BandFrequency, BandSolo, Bypass, IdCount };
     enum FxParameter { FxEnabled, DuckTarget, DuckPosition, FxMix, DelayEnabled, DelayLength,
         DelayFeedback, DelayBass, DelayTreble, DelayMode, ReverbEnabled, ReverbType,

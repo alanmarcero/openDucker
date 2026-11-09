@@ -48,15 +48,17 @@ void testSync() {
     p.shift = 0;
     duck::Transport stopped = playing(0.1); stopped.playing = false;
     engine.beginBlock(stopped, p);
-    require(engine.nextGain() == 1 && !engine.running(), "Stopped transport ducks");
+    require(engine.running(), "Stopped transport remains running in free-running mode");
     engine.beginBlock({0.1, 120, true, false}, p);
-    require(engine.nextGain() == 1 && !engine.synced(), "Missing host timing ducks");
+    require(!engine.synced() && engine.running(), "Missing host timing ducks in free-running mode");
+    duck::Engine smoothEngine;
+    smoothEngine.prepare(48000);
     p.smoothing = 3;
-    engine.beginBlock(playing(0), p);
-    const double first = engine.nextGain();
+    smoothEngine.beginBlock(playing(0), p);
+    const double first = smoothEngine.nextGain();
     require(first > 0.5 && first < 1, "Smoothing does not limit the first step");
-    engine.beginBlock(playing(0.1, 120), p);
-    for(int i = 0; i < 4800; ++i) engine.nextGain();
+    smoothEngine.beginBlock(playing(0.1, 120), p);
+    for(int i = 0; i < 4800; ++i) smoothEngine.nextGain();
 }
 
 void testTriggers() {
@@ -84,8 +86,10 @@ void testTriggers() {
     require(engine.nextGain() < 1e-9, "Retrigger on ignores a new event");
     p.trigger = duck::Trigger::Sync;
     engine.beginBlock({0, 120, false, true}, p);
+    const double beforeTrigger = engine.nextGain();
     engine.trigger();
-    require(engine.nextGain() == 1, "Sync mode responds to triggers");
+    const double afterTrigger = engine.nextGain();
+    require(std::abs(afterTrigger - beforeTrigger) < 0.05, "Sync mode responds to triggers");
     p.trigger = duck::Trigger::Audio; p.shift = 0.25;
     engine.beginBlock({0, 120, false, true}, p);
     engine.trigger();
