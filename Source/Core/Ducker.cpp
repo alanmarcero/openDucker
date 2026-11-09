@@ -28,16 +28,16 @@ void Engine::beginBlock(Transport t, Parameters p) noexcept {
     p.smoothing = std::clamp(p.smoothing, 0, static_cast<int>(smoothingMilliseconds.size()) - 1);
     p.length = std::isfinite(p.length) ? std::clamp(p.length, 0.05, 1.0) : 1.0;
     p.shift = std::isfinite(p.shift) ? std::clamp(p.shift, 0.0, 1.0) : 0.0;
-    if(p.trigger == Trigger::Sync) isRunning = false;
     parameters = p;
     const double milliseconds = smoothingMilliseconds[static_cast<size_t>(p.smoothing)];
     smoothingCoefficient = milliseconds > 0 ? std::exp(-1.0 / (milliseconds * 0.001 * sampleRate)) : 0.0;
     const bool hostTiming = t.valid && std::isfinite(t.ppq) && std::abs(t.ppq) < 1e12 && usableBpm(t.bpm);
-    bpm = hostTiming ? t.bpm : 120.0;
+    bpm = hostTiming ? t.bpm : (bpm > 0.0 ? bpm : 120.0);
     syncActive = hostTiming && t.playing;
     step = bpm / (60.0 * sampleRate);
     blockPpq = hostTiming ? t.ppq : 0.0;
     offset = 0;
+    if(p.trigger == Trigger::Sync) isRunning = true;
 }
 
 void Engine::trigger() noexcept {
@@ -48,16 +48,25 @@ void Engine::trigger() noexcept {
 }
 
 double Engine::nextGain() noexcept {
-    double target = 1;
+    double target = 1.0;
     if(parameters.trigger == Trigger::Sync) {
-        isRunning = syncActive;
-        lastPhase = 0;
+        isRunning = true;
+        const double cycleLen = cycleBeats[static_cast<size_t>(parameters.rate)];
+        double currentCyclePhase = freePhase + step / cycleLen;
         if(syncActive) {
             const double ppq = blockPpq + offset * step;
-            lastPhase = fraction(ppq / cycleBeats[static_cast<size_t>(parameters.rate)] - parameters.shift);
-            target = cycleGain(parameters.curve, lastPhase, parameters.length);
+            currentCyclePhase = ppq / cycleLen;
         }
-    } else if(isRunning) {
+        freePhase = fraction(currentCyclePhase);
+        lastPhase = fraction(freePhase - parameters.shift);
+        if(lastPhase < 0.0) lastPhase += 1.0;
+        target = cycleGain(parameters.curve, lastPhase, parameters.length);
+        ++offset;
+        gain = target + (gain - target) * smoothingCoefficient;
+        return std::clamp(gain, 0.0, 1.0);
+    }
+
+    if(isRunning) {
         const double phase = elapsed / cycleSamples() - parameters.shift;
         elapsed += 1;
         if(phase >= 1) isRunning = false;

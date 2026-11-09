@@ -72,6 +72,7 @@ private:
     CurveDisplay display;
     EffectsPanel effectsPanel;
     juce::TextButton effectsToggle;
+    juce::TextButton pushItButton {"PUSH IT"};
     bool effectsExpanded = true;
     juce::Slider mix, band, shift, threshold;
     std::array<juce::TextButton, 4> rateButtons;

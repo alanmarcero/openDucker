@@ -101,6 +101,10 @@ void DuckerProcessor::prepareToPlay(double rate, int) {
 
 void DuckerProcessor::reset() {
     resetEffects.store(true);
+    triggerDemo.store(false);
+    demoImpactSamplesLeft = 0;
+    demoPhase = 0;
+    demoFilterL = demoFilterR = 0;
     outputPeak.store(0, std::memory_order_relaxed);
     destroyLevel.store(0, std::memory_order_relaxed);
     lastBin = -1; binInput = binOutput = 0;
@@ -181,6 +185,10 @@ template<typename Sample> void DuckerProcessor::process(juce::AudioBuffer<Sample
     const bool stereo = channels > 1;
     const auto events = midi.begin(), endOfEvents = midi.end();
     auto nextEvent = events;
+    if(triggerDemo.exchange(false)) {
+        demoImpactSamplesLeft = static_cast<int>(sampleRate * 2.5);
+        demoPhase = 0;
+    }
     const auto flushBin = [&] {
         if(lastBin < 0) return;
         inputBins[static_cast<size_t>(lastBin)].store(binInput, std::memory_order_relaxed);
@@ -188,12 +196,40 @@ template<typename Sample> void DuckerProcessor::process(juce::AudioBuffer<Sample
     };
     double gain = 1, blockPeak = 0;
     for(int sample = 0; sample < samples; ++sample) {
+        double demoL = 0, demoR = 0;
+        if(demoImpactSamplesLeft > 0) {
+            constexpr double twoPi = 6.28318530717958647692;
+            const double totalDuration = sampleRate * 2.5;
+            const double timeSec = (totalDuration - static_cast<double>(demoImpactSamplesLeft)) / sampleRate;
+            const double thumpDecay = std::exp(-timeSec / 0.12);
+            const double thumpFreq = 45.0 + 85.0 * std::exp(-timeSec / 0.04);
+            demoPhase += (twoPi * thumpFreq) / sampleRate;
+            const double thump = std::sin(demoPhase) * thumpDecay * 0.75;
+            const double click = timeSec < 0.003 ? (1.0 - timeSec / 0.003) * 0.5 : 0.0;
+            const double crashEnv = std::exp(-timeSec / 0.55);
+            auto nextRnd = [this]() {
+                demoSeed ^= demoSeed << 13;
+                demoSeed ^= demoSeed >> 17;
+                demoSeed ^= demoSeed << 5;
+                return (static_cast<double>(demoSeed) / 2147483648.0) - 1.0;
+            };
+            const double rawL = nextRnd();
+            const double rawR = nextRnd();
+            demoFilterL += static_cast<float>(0.35 * (rawL - static_cast<double>(demoFilterL)));
+            demoFilterR += static_cast<float>(0.35 * (rawR - static_cast<double>(demoFilterR)));
+            const double crashL = static_cast<double>(demoFilterL) * crashEnv * 0.45;
+            const double crashR = static_cast<double>(demoFilterR) * crashEnv * 0.45;
+            demoL = thump + click + crashL;
+            demoR = thump + click + crashR;
+            --demoImpactSamplesLeft;
+        }
+
         if(trigger == duck::Trigger::Midi) {
             for(; nextEvent != endOfEvents && (*nextEvent).samplePosition <= sample; ++nextEvent)
                 if((*nextEvent).getMessage().isNoteOn()) engine.trigger();
         }
         if(trigger == duck::Trigger::Audio) {
-            double level = 0;
+            double level = std::max(std::abs(demoL), std::abs(demoR));
             const auto& source = hasSidechain ? sidechain : main;
             for(int channel = 0; channel < source.getNumChannels(); ++channel)
                 level = std::max(level, std::abs(static_cast<double>(source.getSample(channel, sample))));
@@ -204,7 +240,7 @@ template<typename Sample> void DuckerProcessor::process(juce::AudioBuffer<Sample
         const double bandAmount = bandBlend.getNextValue(), solo = soloBlend.getNextValue(), active = activeBlend.getNextValue();
         const double dryMask = dryDuck.getNextValue(), preMask = wetPreDuck.getNextValue(), postMask = wetPostDuck.getNextValue();
         const double blend = fxBlend.getNextValue(), mix = wetMix.getNextValue() * blend, trim = outputGain.getNextValue();
-        const duck::Stereo input {static_cast<double>(main.getSample(0, sample)), static_cast<double>(main.getSample(stereo ? 1 : 0, sample))};
+        const duck::Stereo input {static_cast<double>(main.getSample(0, sample)) + demoL, static_cast<double>(main.getSample(stereo ? 1 : 0, sample)) + demoR};
         const auto bandsL = crossover.split(0, input.left);
         const auto bandsR = stereo ? crossover.split(1, input.right) : bandsL;
         const auto shapeChannel = [&](double x, duck::Bands bands, double mask) {
