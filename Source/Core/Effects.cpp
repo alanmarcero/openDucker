@@ -17,10 +17,24 @@ Stereo mix(Stereo a,Stereo b,double t) noexcept { return {lerp(a.left,b.left,t),
 // Reset validity instead of touching storage: audio-thread reset cost must not grow with sample rate.
 void Effects::Line::clear() noexcept { position=valid=0; }
 double Effects::Line::read(double delay) const noexcept {
- double at=static_cast<double>(position)-delay;
- if(at<0) at+=static_cast<double>(samples.size());
- const size_t first=static_cast<size_t>(at),next=first+1==samples.size()?0:first+1;
- return lerp(first<valid?samples[first]:0,next<valid?samples[next]:0,at-static_cast<double>(first));
+ const double sz = static_cast<double>(samples.size());
+ double at = static_cast<double>(position) - delay;
+ while (at < 0.0) at += sz;
+ while (at >= sz) at -= sz;
+ const size_t i1 = static_cast<size_t>(at);
+ const double frac = at - static_cast<double>(i1);
+ const size_t i0 = i1 == 0 ? samples.size() - 1 : i1 - 1;
+ const size_t i2 = i1 + 1 == samples.size() ? 0 : i1 + 1;
+ const size_t i3 = i2 + 1 == samples.size() ? 0 : i2 + 1;
+ const double y0 = i0 < valid ? samples[i0] : 0.0;
+ const double y1 = i1 < valid ? samples[i1] : 0.0;
+ const double y2 = i2 < valid ? samples[i2] : 0.0;
+ const double y3 = i3 < valid ? samples[i3] : 0.0;
+ const double c0 = y1;
+ const double c1 = 0.5 * (y2 - y0);
+ const double c2 = y0 - 2.5 * y1 + 2.0 * y2 - 0.5 * y3;
+ const double c3 = 0.5 * (y3 - y0) + 1.5 * (y1 - y2);
+ return ((c3 * frac + c2) * frac + c1) * frac + c0;
 }
 
 void Effects::Shelf::configure(double rate,double hz,double db,bool high,bool immediate) noexcept {
@@ -170,12 +184,24 @@ void Effects::reset() noexcept {
  sourceActive=phraseSeen=false; initialized=false; setParameters(parameters);
 }
 double Effects::delayRead(const std::vector<double>& buffer,double samples) const noexcept {
- double at=static_cast<double>(delayPosition)-samples;
- if(at<0) at+=static_cast<double>(buffer.size());
- const size_t first=static_cast<size_t>(at),next=first+1==buffer.size()?0:first+1;
- const double firstSample=first<delayValid?buffer[first]:0;
- const double nextSample=next<delayValid?buffer[next]:0;
- return lerp(firstSample,nextSample,at-static_cast<double>(first));
+ const double sz = static_cast<double>(buffer.size());
+ double at = static_cast<double>(delayPosition) - samples;
+ while (at < 0.0) at += sz;
+ while (at >= sz) at -= sz;
+ const size_t i1 = static_cast<size_t>(at);
+ const double frac = at - static_cast<double>(i1);
+ const size_t i0 = i1 == 0 ? buffer.size() - 1 : i1 - 1;
+ const size_t i2 = i1 + 1 == buffer.size() ? 0 : i1 + 1;
+ const size_t i3 = i2 + 1 == buffer.size() ? 0 : i2 + 1;
+ const double y0 = i0 < delayValid ? buffer[i0] : 0.0;
+ const double y1 = i1 < delayValid ? buffer[i1] : 0.0;
+ const double y2 = i2 < delayValid ? buffer[i2] : 0.0;
+ const double y3 = i3 < delayValid ? buffer[i3] : 0.0;
+ const double c0 = y1;
+ const double c1 = 0.5 * (y2 - y0);
+ const double c2 = y0 - 2.5 * y1 + 2.0 * y2 - 0.5 * y3;
+ const double c3 = 0.5 * (y3 - y0) + 1.5 * (y1 - y2);
+ return ((c3 * frac + c2) * frac + c1) * frac + c0;
 }
 Stereo Effects::delay(Stereo input) noexcept {
  const Stereo a{delayRead(delayLeft,oldDelaySamples),delayRead(delayRight,oldDelaySamples)};
@@ -186,8 +212,15 @@ Stereo Effects::delay(Stereo input) noexcept {
  const double mid=(input.left+input.right)*.5,side=(input.left-input.right)*.5;
  // The side component sums to zero. A mono source therefore starts left and alternates on repeats.
  const Stereo injection{lerp(mid,mid+side,pingPong),lerp(mid,-side,pingPong)};
- delayLeft[delayPosition]=clean(injection.left+feedback*lerp(delayed.left,delayed.right,pingPong));
- delayRight[delayPosition]=clean(injection.right+feedback*lerp(delayed.right,delayed.left,pingPong));
+ const double fbL = feedback * lerp(delayed.left, delayed.right, pingPong);
+ const double fbR = feedback * lerp(delayed.right, delayed.left, pingPong);
+ const auto softLimit = [](double x) noexcept {
+  const double ax = std::abs(x);
+  if (ax <= 1.0) return x;
+  return (x > 0 ? 1.0 : -1.0) * (1.0 + std::tanh(ax - 1.0));
+ };
+ delayLeft[delayPosition]=clean(injection.left+softLimit(fbL));
+ delayRight[delayPosition]=clean(injection.right+softLimit(fbR));
  if(delayValid<delayLeft.size()) ++delayValid;
  if(++delayPosition==delayLeft.size()) delayPosition=0;
  const auto equalized=delayTreble.process(delayBass.process(delayed,smoothing),smoothing);
