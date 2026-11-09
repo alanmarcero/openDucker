@@ -151,6 +151,20 @@ void EffectsPanel::paint(juce::Graphics& g) {
     g.setFont(juce::FontOptions(11.5f * s));
     g.drawText("Dry: " + dry + "   /   FX: " + wet, juce::Rectangle<float>(534 * s, 4 * s, 248 * s, 28 * s), juce::Justification::centredLeft);
 
+    // Stage Status LEDs & Badges
+    const bool delayOn = enabled && switches[1].getToggleState();
+    g.setColour(delayOn ? look::mint : look::muted.withAlpha(0.35f));
+    g.fillEllipse(114 * s, 59.5f * s, 7 * s, 7 * s);
+    g.setFont(juce::FontOptions(10.5f * s, juce::Font::bold));
+    g.setColour(delayOn ? look::mint.withAlpha(0.9f) : look::muted.withAlpha(0.5f));
+    g.drawText("DELAY", juce::Rectangle<float>(125 * s, 50 * s, 62 * s, 26 * s), juce::Justification::centredLeft);
+
+    const bool reverbOn = enabled && switches[2].getToggleState();
+    g.setColour(reverbOn ? look::yellow : look::muted.withAlpha(0.35f));
+    g.fillEllipse(444 * s, 59.5f * s, 7 * s, 7 * s);
+    g.setColour(reverbOn ? look::yellow.withAlpha(0.9f) : look::muted.withAlpha(0.5f));
+    g.drawText("REVERB", juce::Rectangle<float>(455 * s, 50 * s, 58 * s, 26 * s), juce::Justification::centredLeft);
+
     const float activity = owner.destroyLevel.load(std::memory_order_relaxed);
     g.setColour(activity > 0.01f ? look::yellow : look::muted.withAlpha(0.35f));
     g.fillEllipse(664 * s, 59.5f * s, 7 * s, 7 * s);
