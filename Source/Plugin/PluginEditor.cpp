@@ -386,7 +386,8 @@ void CurveDisplay::paint(juce::Graphics& g) {
 
 DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(p), display(p), effectsPanel(p) {
     setLookAndFeel(&theme);
-    mascot = juce::ImageCache::getFromMemory(BinaryData::djduck_png, BinaryData::djduck_pngSize);
+    auto heroDuck = juce::ImageCache::getFromMemory(BinaryData::cyberduckhero_png, BinaryData::cyberduckhero_pngSize);
+    mascot = !heroDuck.isNull() ? heroDuck : juce::ImageCache::getFromMemory(BinaryData::djduck_png, BinaryData::djduck_pngSize);
     faceplate = juce::ImageCache::getFromMemory(BinaryData::analogcyberfaceplate_png, BinaryData::analogcyberfaceplate_pngSize);
 
     addAndMakeVisible(display);
