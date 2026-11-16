@@ -4,8 +4,8 @@
 
 namespace {
 constexpr float pi = juce::MathConstants<float>::pi;
-constexpr int collapsedHeight = 510;
-constexpr int expandedHeight = 724;
+constexpr int collapsedHeight = 552;
+constexpr int expandedHeight = 760;
 
 void drawText(juce::Graphics& g, const juce::String& value, juce::Rectangle<float> bounds, float size, juce::Colour colour,
     juce::Justification alignment = juce::Justification::centred, bool bold = true) {
@@ -426,6 +426,25 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
     configureBar(shift, "shift", "Shift", "%", "Offset the curve against the beat. In MIDI and Audio modes this delays the curve after each trigger.");
     configureBar(threshold, "threshold", "Threshold", "dB", "Audio trigger level. Uses the sidechain input when connected, otherwise the main input.");
     threshold.setDoubleClickReturnValue(true, -24);
+    configureBar(detectorHpf, "detectorHpf", "Detector HPF", "Hz", "High-pass filter on the audio-trigger detector. 0 Hz bypasses it.");
+    configureBar(detectorLpf, "detectorLpf", "Detector LPF", "Hz", "Low-pass filter on the audio-trigger detector. 0 Hz bypasses it.");
+    detectorHpf.textFromValueFunction = [](double value) { return value < 1.0 ? juce::String("OFF") : juce::String(juce::roundToInt(value)) + " Hz"; };
+    detectorLpf.textFromValueFunction = [](double value) { return value < 1.0 ? juce::String("OFF") : juce::String(juce::roundToInt(value)) + " Hz"; };
+    detectorHpf.setDoubleClickReturnValue(true, 0);
+    detectorLpf.setDoubleClickReturnValue(true, 0);
+    detectorHpfLabel.setComponentID("detectorHpfLabel");
+    detectorLpfLabel.setComponentID("detectorLpfLabel");
+    for(auto* label : {&detectorHpfLabel, &detectorLpfLabel}) {
+        label->setFont(juce::FontOptions(9.0f, juce::Font::bold));
+        label->setJustificationType(juce::Justification::centredLeft);
+        label->setColour(juce::Label::textColourId, look::muted);
+        addAndMakeVisible(*label);
+    }
+    detectorMonitorButton.setComponentID("detectorMonitor");
+    detectorMonitorButton.setClickingTogglesState(true);
+    detectorMonitorButton.setTooltip("Listen to the filtered detector input in place of the processed output.");
+    addAndMakeVisible(detectorMonitorButton);
+    detectorMonitorAttachment = std::make_unique<ButtonAttachment>(p.parameters, "detectorMonitor", detectorMonitorButton);
 
     const juce::StringArray rateNames {"1/8", "1/4", "1/2", "1/1"};
     for(size_t i = 0; i < rateButtons.size(); ++i) {
@@ -501,6 +520,8 @@ void DuckerEditor::configureBar(juce::Slider& slider, const char* id, const juce
     auto attachment = std::make_unique<SliderAttachment>(owner.parameters, id, slider);
     if(juce::String(id) == "bandFrequency") bandAttachment = std::move(attachment);
     else if(juce::String(id) == "shift") shiftAttachment = std::move(attachment);
+    else if(juce::String(id) == "detectorHpf") detectorHpfAttachment = std::move(attachment);
+    else if(juce::String(id) == "detectorLpf") detectorLpfAttachment = std::move(attachment);
     else thresholdAttachment = std::move(attachment);
     slider.textFromValueFunction = [unit](double value) {
         return (unit == "%" ? juce::String(juce::roundToInt(value)) : juce::String(value, unit == "dB" ? 1 : 0)) + (unit == "%" ? "%" : " " + unit);
@@ -577,7 +598,13 @@ void DuckerEditor::resized() {
     for(size_t i = 0; i < curveButtons.size(); ++i)
         curveButtons[i]->setBounds(area(354 + static_cast<float>(i % 8) * 79, i < 8 ? 398 : 450, 74, 44));
 
-    effectsPanel.setBounds(area(22, 516, 962, 198));
+    detectorHpfLabel.setBounds(area(354, 500, 218, 13));
+    detectorHpf.setBounds(area(354, 513, 218, 30));
+    detectorLpfLabel.setBounds(area(588, 500, 218, 13));
+    detectorLpf.setBounds(area(588, 513, 218, 30));
+    detectorMonitorButton.setBounds(area(836, 505, 148, 34));
+
+    effectsPanel.setBounds(area(22, 552, 962, 198));
 }
 
 void DuckerEditor::paintDuckBooth(juce::Graphics& g, juce::Rectangle<float> area, float s) {
@@ -664,5 +691,5 @@ void DuckerEditor::paint(juce::Graphics& g) {
     // Subtle divider between left column and right tools
     g.setColour(look::muted.withAlpha(0.18f));
     g.drawVerticalLine(juce::roundToInt(342 * s), 16 * s, 498 * s);
-    if(effectsExpanded) g.drawHorizontalLine(juce::roundToInt(508 * s), 22 * s, 984 * s);
+    if(effectsExpanded) g.drawHorizontalLine(juce::roundToInt(546 * s), 22 * s, 984 * s);
 }

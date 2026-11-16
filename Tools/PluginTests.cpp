@@ -138,6 +138,50 @@ template<typename Sample> void testTriggers() {
         layout.inputBuses = {juce::AudioChannelSet::mono(), juce::AudioChannelSet::disabled()}; layout.outputBuses = {juce::AudioChannelSet::stereo()}; return layout; }()),
         "Mismatched main layout is accepted");
 }
+
+template<typename Sample> void testDetectorFilters() {
+    DuckerProcessor highPass;
+    set(highPass, "trigger", 2);
+    set(highPass, "smoothing", 0);
+    set(highPass, "detectorHpf", 1000);
+    highPass.prepareToPlay(sampleRate, 48000);
+    juce::AudioBuffer<Sample> lowTone(2, 48000);
+    juce::MidiBuffer midi;
+    for(int i = 0; i < 48000; ++i) {
+        const auto value = static_cast<Sample>(0.5 * std::sin(6.283185307179586 * 100.0 * i / sampleRate));
+        lowTone.setSample(0, i, value); lowTone.setSample(1, i, value);
+    }
+    highPass.processBlock(lowTone, midi);
+    require(!highPass.visualRunning.load(), "High-pass detector triggers on low-frequency energy");
+
+    DuckerProcessor lowPass;
+    set(lowPass, "trigger", 2);
+    set(lowPass, "smoothing", 0);
+    set(lowPass, "detectorLpf", 500);
+    lowPass.prepareToPlay(sampleRate, 48000);
+    juce::AudioBuffer<Sample> highTone(2, 48000);
+    for(int i = 0; i < 48000; ++i) {
+        const auto value = static_cast<Sample>(0.5 * std::sin(6.283185307179586 * 5000.0 * i / sampleRate));
+        highTone.setSample(0, i, value); highTone.setSample(1, i, value);
+    }
+    lowPass.processBlock(highTone, midi);
+    require(!lowPass.visualRunning.load(), "Low-pass detector triggers on high-frequency energy");
+
+    DuckerProcessor monitor;
+    set(monitor, "detectorLpf", 500);
+    set(monitor, "detectorMonitor", 1);
+    monitor.prepareToPlay(sampleRate, 48000);
+    juce::AudioBuffer<Sample> audition(2, 48000);
+    for(int i = 0; i < 48000; ++i) {
+        const auto value = static_cast<Sample>(0.5 * std::sin(6.283185307179586 * 5000.0 * i / sampleRate));
+        audition.setSample(0, i, value); audition.setSample(1, i, value);
+    }
+    monitor.processBlock(audition, midi);
+    double energy = 0;
+    for(int i = 24000; i < 48000; ++i) energy += audition.getSample(0, i) * audition.getSample(0, i);
+    const double monitoredRms = std::sqrt(energy / 24000.0);
+    require(monitoredRms < 0.08, "Detector listen does not output the filtered signal");
+}
 double tone(const std::vector<double>& signal, double hertz, long first, long last) {
     double sine = 0, cosine = 0;
     for(long i = first; i < last; ++i) {
@@ -408,9 +452,9 @@ void testEffectsControls(DuckerProcessor& p, juce::AudioProcessorEditor& editor)
         button->setToggleState(true, juce::sendNotificationSync); require(p.parameters.getRawParameterValue(id)->load() > 0.5f, "Effect cannot turn on");
     }
     auto* toggle = dynamic_cast<juce::TextButton*>(find(editor, "effectsToggle")); require(toggle != nullptr, "Effects collapse missing");
-    toggle->onClick(); require(editor.getHeight() == 510 && !find(editor, "reverbType")->isShowing(), "Effects panel does not collapse");
+    toggle->onClick(); require(editor.getHeight() == 552 && !find(editor, "reverbType")->isShowing(), "Effects panel does not collapse");
     require(p.parameters.getRawParameterValue("fxEnabled")->load() > 0.5f, "Collapsing panel disables audio");
-    toggle->onClick(); require(editor.getHeight() == 724, "Effects panel does not expand");
+    toggle->onClick(); require(editor.getHeight() == 760, "Effects panel does not expand");
 }
 void testControls(DuckerProcessor& p, juce::AudioProcessorEditor& editor) {
     auto& mix = control<juce::Slider>(editor, "mix");
@@ -451,6 +495,12 @@ void testControls(DuckerProcessor& p, juce::AudioProcessorEditor& editor) {
     require(std::abs(get(p, "shift") - 25) < 0.1, "Shift slider disconnected");
     control<juce::Slider>(editor, "threshold").setValue(-12, juce::sendNotificationSync);
     require(std::abs(get(p, "threshold") + 12) < 0.1, "Threshold slider disconnected");
+    control<juce::Slider>(editor, "detectorHpf").setValue(1200, juce::sendNotificationSync);
+    require(std::abs(get(p, "detectorHpf") - 1200) < 1, "Detector high-pass slider disconnected");
+    control<juce::Slider>(editor, "detectorLpf").setValue(8000, juce::sendNotificationSync);
+    require(std::abs(get(p, "detectorLpf") - 8000) < 1, "Detector low-pass slider disconnected");
+    control<juce::Button>(editor, "detectorMonitor").setToggleState(true, juce::sendNotificationSync);
+    require(get(p, "detectorMonitor") > 0.5f, "Detector listen button disconnected");
     auto& display = control<juce::Component>(editor, "display");
     const auto time = juce::Time::getCurrentTime();
     const auto event = [&](juce::Point<float> position, bool dragged) {
@@ -471,7 +521,7 @@ void testControls(DuckerProcessor& p, juce::AudioProcessorEditor& editor) {
 int main(int argc, char** argv) {
     juce::ScopedJuceInitialiser_GUI gui;
     try {
-        testSync<float>(); testSync<double>(); testTriggers<float>(); testTriggers<double>(); testBand<float>(); testBand<double>();
+        testSync<float>(); testSync<double>(); testTriggers<float>(); testTriggers<double>(); testDetectorFilters<float>(); testDetectorFilters<double>(); testBand<float>(); testBand<double>();
         testStandaloneSustain<float>(); testStandaloneSustain<double>(); testNewFxModes();
         testFxMatrix<float>(); testFxMatrix<double>();
         testEffectsRouting<float>(); testEffectsRouting<double>();
@@ -484,7 +534,7 @@ int main(int argc, char** argv) {
         Host host; host.position.setIsPlaying(true); host.position.setBpm(128); host.position.setPpqPosition(0);
         DuckerProcessor p; p.setPlayHead(&host); p.prepareToPlay(sampleRate, 512);
         std::unique_ptr<juce::AudioProcessorEditor> editor(p.createEditor());
-        editor->setSize(1000, 724);
+        editor->setSize(1000, 760);
         testControls(p, *editor);
         testEffectsControls(p, *editor);
         testEqDetents(p, *editor);

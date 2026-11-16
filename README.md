@@ -8,7 +8,7 @@
 
 ![openDucker 2 in Sync mode](docs/screenshots/openDucker-sync.png)
 
-*Captured from the running v2.3.1 native editor. [Capture details](docs/SCREENSHOTS.md).*
+*Captured from the running v2.4.0 native editor. [Capture details](docs/SCREENSHOTS.md).*
 
 ## What's in v2.1
 
@@ -23,6 +23,8 @@ openDucker 2 combines a sample-accurate Kickstart-style volume-shaping ducker an
 | **Slope handle** | Drag the handle in the display to shorten or stretch the curve inside the cycle (5–100%). Double-click it to reset. |
 | **Shift** | Moves the curve against the beat. In MIDI and Audio modes it delays the curve after each trigger. |
 | **Threshold** | Audio trigger level, −60 to 0 dB. |
+| **Detector HPF / LPF** | Filter the sidechain (or main input fallback) before audio trigger detection. Both filters are automatable; set either to 0 Hz to bypass it. |
+| **Listen** | Audition the filtered detector input at the plugin output while tuning the detector filters. |
 | **Retrigger** (loop icon) | When on, a new trigger restarts a running curve; when off, triggers are ignored until it finishes. |
 | **BAND, band slider, headphones** | Duck only the low band below the band frequency (30 Hz–1 kHz) with a Linkwitz-Riley 4th-order split; the headphones solo that band. |
 | **Hide FX / Show FX** | Expand or collapse the FX rack while keeping audio processing active. |
@@ -41,7 +43,7 @@ The display overlays the input (grey) and output (yellow) over one cycle, so you
 ## Using it
 
 1. Insert openDucker on the sound you want to duck (bass, pad, lead, bus).
-2. **Sync:** start the transport and choose a Length. **MIDI:** route a kick or drum track's MIDI to the plugin. **Audio:** enable the plugin's sidechain input in your DAW and send the kick to it, or leave it disconnected to trigger from the plugin's own input.
+2. **Sync:** start the transport and choose a Length. **MIDI:** route a kick or drum track's MIDI to the plugin. **Audio:** enable the plugin's sidechain input in your DAW and send the kick to it, or leave it disconnected to trigger from the plugin's own input. Use **Detector HPF** and **Detector LPF** to isolate the frequency range that should trigger ducking; **Listen** lets you hear that filtered signal.
 3. Pick a curve, then drag the slope handle until the recovery fits your kick.
 4. Turn on **BAND** to keep the mids and highs untouched, and use the headphones to hear only the ducked band.
 5. Turn on **FX On** to add tempo-synced Delay, Reverb, Sustain and Destroy, and select **Dry**, **Wet** or **Both** (**Before FX** or **After FX**) to duck the source, the FX tails, or everything together.
