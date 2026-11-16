@@ -8,7 +8,7 @@
 
 ![openDucker 2 in Sync mode](docs/screenshots/openDucker-sync.png)
 
-*Captured from the running v2.1.0 native editor. [Capture details](docs/SCREENSHOTS.md).*
+*Captured from the running v2.3.1 native editor. [Capture details](docs/SCREENSHOTS.md).*
 
 ## What's in v2.1
 

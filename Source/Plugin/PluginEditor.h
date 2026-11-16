@@ -4,9 +4,9 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 namespace look {
-const juce::Colour background {0xff10171b}, panel {0xff1c262b}, panelHover {0xff26343b}, display {0xff090e11},
-    mint {0xff8fd3ce}, brightMint {0xffa3f0e9}, yellow {0xffffd043}, darkMint {0xff284946},
-    paper {0xfff2f1e8}, muted {0xff8b9ea7}, ink {0xff10171b};
+const juce::Colour background {0xff0d1317}, panel {0xff152026}, panelHover {0xff1e2c33}, display {0xff0a1216},
+    mint {0xff48f0c8}, brightMint {0xff80f5dc}, yellow {0xffffbe3b}, darkMint {0xff23483f},
+    paper {0xffe6f0f5}, muted {0xff869ca8}, ink {0xff0d1317};
 }
 
 class DuckLookAndFeel final : public juce::LookAndFeel_V4 {
