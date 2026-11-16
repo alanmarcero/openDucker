@@ -1,12 +1,13 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include <algorithm>
 #include <cmath>
 
 namespace {
 double trimGain(float db) { return std::pow(10.0, std::round(static_cast<double>(db) * 100) / 2000); }
 constexpr std::array<double, 8> delayBeats {0.125, 0.25, 0.5, 0.75, 1, 1.5, 2, 4};
-constexpr std::array<const char*, 13> ids {"mix", "curve", "rate", "length", "shift", "trigger", "retrigger", "threshold",
-    "smoothing", "bandOn", "bandFrequency", "bandSolo", "bypass"};
+constexpr std::array<const char*, 16> ids {"mix", "curve", "rate", "length", "shift", "trigger", "retrigger", "threshold",
+    "smoothing", "bandOn", "bandFrequency", "bandSolo", "bypass", "detectorHpf", "detectorLpf", "detectorMonitor"};
 constexpr std::array<const char*, 21> fxIds {"fxEnabled", "duckTarget", "duckPosition", "fxMix", "delayEnabled", "delayLength",
     "delayFeedback", "delayBass", "delayTreble", "delayMode", "reverbEnabled", "reverbType",
     "reverbLength", "reverbWidth", "reverbBass", "reverbTreble", "sustain", "destroy", "output", "fxFlow", "destroyMode"};
@@ -39,6 +40,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout DuckerProcessor::layout() {
     number("bandFrequency", "Band frequency", {30, 1000, 1, 0.4f}, 150, "Hz");
     toggle("bandSolo", "Band solo", false);
     toggle("bypass", "Bypass", false);
+    number("detectorHpf", "Detector high-pass", {0, 20000, 1, 0.4f}, 0, "Hz", 2);
+    number("detectorLpf", "Detector low-pass", {0, 20000, 1, 0.4f}, 0, "Hz", 2);
+    toggle("detectorMonitor", "Detector monitor", false, 2);
 
     toggle("fxEnabled", "Effects enabled", false, 2);
     choice("duckTarget", "Duck", {"Dry", "Wet", "Both"}, 2, 2);
@@ -78,6 +82,7 @@ DuckerProcessor::DuckerProcessor()
 void DuckerProcessor::prepareToPlay(double rate, int) {
     sampleRate = rate;
     engine.prepare(rate); crossover.prepare(rate); detector.prepare(rate); effects.prepare(rate);
+    for(auto& filter : detectorFilters) { filter.prepare(rate); filter.reset(); }
     setLatencySamples(0);
     effectsRunning = false;
     bandFrequency = -1; lastBin = -1; binInput = binOutput = 0;
@@ -101,6 +106,7 @@ void DuckerProcessor::prepareToPlay(double rate, int) {
 
 void DuckerProcessor::reset() {
     resetEffects.store(true);
+    for(auto& filter : detectorFilters) filter.reset();
     triggerDemo.store(false);
     demoImpactSamplesLeft = 0;
     demoPhase = 0;
@@ -183,6 +189,9 @@ template<typename Sample> void DuckerProcessor::process(juce::AudioBuffer<Sample
     auto sidechain = hasSidechain ? getBusBuffer(buffer, true, 1) : juce::AudioBuffer<Sample>();
     const int channels = main.getNumChannels(), samples = main.getNumSamples();
     const bool stereo = channels > 1;
+    const double detectorHpf = value(DetectorHpf), detectorLpf = value(DetectorLpf);
+    for(auto& filter : detectorFilters) filter.setCutoffs(detectorHpf, detectorLpf);
+    const bool detectorMonitor = value(DetectorMonitor) > 0.5f;
     const auto events = midi.begin(), endOfEvents = midi.end();
     auto nextEvent = events;
     if(triggerDemo.exchange(false)) {
@@ -228,11 +237,13 @@ template<typename Sample> void DuckerProcessor::process(juce::AudioBuffer<Sample
             for(; nextEvent != endOfEvents && (*nextEvent).samplePosition <= sample; ++nextEvent)
                 if((*nextEvent).getMessage().isNoteOn()) engine.trigger();
         }
+        const auto& detectorSource = hasSidechain ? sidechain : main;
+        const double sourceLeft = detectorSource.getNumChannels() > 0 ? static_cast<double>(detectorSource.getSample(0, sample)) : 0.0;
+        const double sourceRight = detectorSource.getNumChannels() > 1 ? static_cast<double>(detectorSource.getSample(1, sample)) : sourceLeft;
+        const double detectorLeft = detectorFilters[0].process(sourceLeft);
+        const double detectorRight = detectorFilters[1].process(sourceRight);
         if(trigger == duck::Trigger::Audio) {
-            double level = std::max(std::abs(demoL), std::abs(demoR));
-            const auto& source = hasSidechain ? sidechain : main;
-            for(int channel = 0; channel < source.getNumChannels(); ++channel)
-                level = std::max(level, std::abs(static_cast<double>(source.getSample(channel, sample))));
+            const double level = std::max({std::abs(demoL), std::abs(demoR), std::abs(detectorLeft), std::abs(detectorRight)});
             if(detector.process(level)) engine.trigger();
         }
         gain = engine.nextGain();
@@ -267,6 +278,7 @@ template<typename Sample> void DuckerProcessor::process(juce::AudioBuffer<Sample
         double right = ((1 - mix) * dryRight + mix * wet.right * postGain) * trim;
         left = input.left + (left - input.left) * active;
         right = input.right + (right - input.right) * active;
+        if(detectorMonitor) { left = detectorLeft; right = detectorRight; }
         const double monoOut = (left + right) * 0.5;
         main.setSample(0, sample, static_cast<Sample>(stereo ? left : monoOut));
         if(stereo) main.setSample(1, sample, static_cast<Sample>(right));

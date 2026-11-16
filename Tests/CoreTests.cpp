@@ -1,6 +1,7 @@
 #include "Ducker.h"
 #include "Crossover.h"
 #include "TransientDetector.h"
+#include "SidechainFilter.h"
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
@@ -117,11 +118,31 @@ void testBandAndDetector() {
     for(int i = 0; i < 48000; ++i) fires += detector.process(0.01);
     require(fires == 0, "Detector fires below threshold");
 }
+
+void testSidechainFilters() {
+    const auto rms = [](double frequency, double highPass, double lowPass) {
+        duck::SidechainFilter filter;
+        filter.prepare(48000.0);
+        filter.setCutoffs(highPass, lowPass);
+        double energy = 0.0;
+        for(int i = 0; i < 48000; ++i) {
+            const double input = std::sin(6.283185307179586 * frequency * i / 48000.0);
+            const double output = filter.process(input);
+            if(i >= 24000) energy += output * output;
+        }
+        return std::sqrt(energy / 24000.0);
+    };
+    require(std::abs(rms(100, 0, 0) - std::sqrt(0.5)) < 1e-8, "Detector filter bypass changes the signal");
+    require(rms(100, 1000, 0) < 0.12, "Detector high-pass leaves low frequencies in the trigger path");
+    require(rms(5000, 1000, 0) > 0.65, "Detector high-pass removes frequencies above its cutoff");
+    require(rms(5000, 0, 500) < 0.12, "Detector low-pass leaves high frequencies in the trigger path");
+    require(rms(100, 0, 500) > 0.65, "Detector low-pass removes frequencies below its cutoff");
+}
 }
 
 int main() {
     try {
-        testCurves(); testSync(); testTriggers(); testBandAndDetector();
-        std::cout << "PASS curves, sync, shift, length, smoothing, triggers, retrigger, band split and transient detection\n";
+        testCurves(); testSync(); testTriggers(); testBandAndDetector(); testSidechainFilters();
+        std::cout << "PASS curves, sync, shift, length, smoothing, triggers, retrigger, band split, transient detection and detector filters\n";
     } catch(const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

@@ -74,7 +74,9 @@ private:
     juce::TextButton effectsToggle;
     juce::TextButton pushItButton {"PUSH IT"};
     bool effectsExpanded = true;
-    juce::Slider mix, band, shift, threshold;
+    juce::Slider mix, band, shift, threshold, detectorHpf, detectorLpf;
+    juce::Label detectorHpfLabel {{}, "DETECTOR HPF"}, detectorLpfLabel {{}, "DETECTOR LPF"};
+    juce::TextButton detectorMonitorButton {"LISTEN"};
     std::array<juce::TextButton, 4> rateButtons;
     std::array<juce::TextButton, 3> triggerButtons;
     juce::TextButton bandButton;
@@ -86,8 +88,9 @@ private:
     juce::TooltipWindow tooltips {this, 600};
     using SliderAttachment = juce::AudioProcessorValueTreeState::SliderAttachment;
     using ButtonAttachment = juce::AudioProcessorValueTreeState::ButtonAttachment;
-    std::unique_ptr<SliderAttachment> mixAttachment, bandAttachment, shiftAttachment, thresholdAttachment;
-    std::unique_ptr<ButtonAttachment> retriggerAttachment, soloAttachment, bandButtonAttachment;
+    std::unique_ptr<SliderAttachment> mixAttachment, bandAttachment, shiftAttachment, thresholdAttachment,
+        detectorHpfAttachment, detectorLpfAttachment;
+    std::unique_ptr<ButtonAttachment> retriggerAttachment, soloAttachment, bandButtonAttachment, detectorMonitorAttachment;
     std::unique_ptr<juce::ParameterAttachment> rateAttachment, triggerAttachment, curveAttachment;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DuckerEditor)
 };
