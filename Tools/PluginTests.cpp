@@ -36,7 +36,7 @@ int yellowPixels(const juce::Image& image, juce::Rectangle<int> area) {
     int count = 0;
     for(int y = area.getY(); y < area.getBottom(); ++y) for(int x = area.getX(); x < area.getRight(); ++x) {
         const auto pixel = image.getPixelAt(x, y);
-        if(pixel.getRed() > 220 && pixel.getGreen() > 190 && pixel.getBlue() < 110) ++count;
+        if(pixel.getRed() > 220 && pixel.getGreen() > 160 && pixel.getBlue() < 110) ++count;
     }
     return count;
 }

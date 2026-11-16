@@ -626,7 +626,7 @@ void DuckerEditor::paint(juce::Graphics& g) {
 
     // Subtle brushed analog-cyber faceplate texture overlay
     if(faceplate.isValid()) {
-        g.setOpacity(0.48f);
+        g.setOpacity(0.12f);
         g.drawImage(faceplate, getLocalBounds().toFloat(), juce::RectanglePlacement::stretchToFit);
         g.setOpacity(1.0f);
     }
