@@ -574,26 +574,26 @@ void DuckerEditor::resized() {
 
     // Left column: DJ Duck is at y=56..240, Mix knob at y=244..424, Band & FX toggle section at y=430..498
     mix.setBounds(area(70, 244, 204, 180));
-    bandButton.setBounds(area(22, 434, 76, 30));
-    solo.setBounds(area(104, 434, 38, 30));
-    pushItButton.setBounds(area(148, 434, 88, 30));
-    effectsToggle.setBounds(area(242, 434, 86, 30));
+    bandButton.setBounds(area(22, 430, 80, 40));
+    solo.setBounds(area(106, 430, 40, 40));
+    pushItButton.setBounds(area(150, 430, 90, 40));
+    effectsToggle.setBounds(area(244, 430, 86, 40));
     band.setBounds(area(22, 472, 306, 26));
 
     // Right column
-    for(size_t i = 0; i < rateButtons.size(); ++i) rateButtons[i].setBounds(area(354 + static_cast<float>(i) * 64, 12, 60, 32));
-    for(size_t i = 0; i < triggerButtons.size(); ++i) triggerButtons[i].setBounds(area(636 + static_cast<float>(i) * 82, 12, 78, 32));
-    retrigger.setBounds(area(898, 12, 38, 32));
-    menu.setBounds(area(944, 12, 40, 32));
+    for(size_t i = 0; i < rateButtons.size(); ++i) rateButtons[i].setBounds(area(354 + static_cast<float>(i) * 64, 10, 60, 36));
+    for(size_t i = 0; i < triggerButtons.size(); ++i) triggerButtons[i].setBounds(area(636 + static_cast<float>(i) * 82, 10, 78, 36));
+    retrigger.setBounds(area(892, 8, 40, 40));
+    menu.setBounds(area(940, 8, 40, 40));
 
     display.setBounds(area(354, 54, 630, 290));
 
-    previousBank.setBounds(area(354, 356, 70, 30));
-    previous.setBounds(area(430, 356, 70, 30));
-    shift.setBounds(area(508, 356, 156, 30));
-    threshold.setBounds(area(672, 356, 156, 30));
-    next.setBounds(area(836, 356, 70, 30));
-    nextBank.setBounds(area(914, 356, 70, 30));
+    previousBank.setBounds(area(354, 352, 70, 40));
+    previous.setBounds(area(430, 352, 70, 40));
+    shift.setBounds(area(508, 352, 156, 40));
+    threshold.setBounds(area(672, 352, 156, 40));
+    next.setBounds(area(836, 352, 70, 40));
+    nextBank.setBounds(area(914, 352, 70, 40));
 
     for(size_t i = 0; i < curveButtons.size(); ++i)
         curveButtons[i]->setBounds(area(354 + static_cast<float>(i % 8) * 79, i < 8 ? 398 : 450, 74, 44));
@@ -602,7 +602,7 @@ void DuckerEditor::resized() {
     detectorHpf.setBounds(area(354, 513, 218, 30));
     detectorLpfLabel.setBounds(area(588, 500, 218, 13));
     detectorLpf.setBounds(area(588, 513, 218, 30));
-    detectorMonitorButton.setBounds(area(836, 505, 148, 34));
+    detectorMonitorButton.setBounds(area(836, 504, 148, 36));
 
     effectsPanel.setBounds(area(22, 552, 962, 198));
 }

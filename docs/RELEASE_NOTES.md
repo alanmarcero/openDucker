@@ -1,10 +1,9 @@
-openDucker 2.1.0 restores the full openDucker FX rack into the openDucker 2 interface.
+openDucker 2.4.1 makes the native editor controls easier to read and use.
 
-- **Restored FX chain:** Tempo-synced Delay (`1/32` to `1 bar`, Mono / Ping-pong, Feedback, Bass & Treble EQ shelves), modulated stereo Reverb (`Room`, `Hall`, `Plate`, 0.2–25 s decay, Width, Bass & Treble EQ shelves), Sustain compression, Destroy bitcrush/stutter/drive (`Tail` / `Always`), FX Mix, and Output trim (−24 to +12 dB) with live peak meter.
-- **Flexible ducking & FX routing:** Duck `Dry`, `Wet`, or `Both` (`Before FX` or `After FX`), and run Delay + Reverb in `Serial` or `Parallel`.
-- **Collapsible 3-card FX rack:** Integrated across the bottom of the 1000 px wide openDucker 2 layout with a `Hide FX` / `Show FX` toggle button alongside the BAND controls.
-- **Full v2.0.0 ducker capabilities preserved:** 16 curves, draggable slope handle, dual input/output waveform display, SYNC / MIDI / AUDIO triggers with sidechain support, Retrigger, Shift, BAND Linkwitz-Riley low-end split with solo, and the animated DJ Duck booth.
+- Text buttons and toggles are at least 36 px high and use 14 px text. Icon controls have 40 px targets and descriptive tooltips.
+- Curve navigation keeps its compact arrow design with tooltips that explain the single-curve and row navigation actions.
+- The FX panel controls have more room, and the updated native screenshots show the full editor without clipping.
 
-v2.0.0 sessions recall cleanly with FX disabled by default so existing sessions sound identical on upgrade.
+Audio processing, parameter IDs, presets, automation, MIDI behavior, and session compatibility are unchanged.
 
-Install the macOS universal VST3/AU or Windows x64 VST3 ZIP, or update through OpenVST Manager. Close your DAW before replacing the plugin and rescan afterward. SHA256SUMS.txt covers both archives. macOS bundles are ad-hoc signed; Windows binaries have no publisher certificate. No commercial-DAW listening session is claimed; see docs/VERIFICATION.md for executed checks.
+Install the macOS universal VST3/AU or Windows x64 VST3 ZIP, or update through OpenVST Manager. Close your DAW before replacing the plugin and rescan afterward. SHA256SUMS.txt covers both archives. macOS bundles are ad-hoc signed; Windows binaries have no publisher certificate. See docs/VERIFICATION.md for the existing verification coverage.
