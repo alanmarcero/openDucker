@@ -6,6 +6,27 @@
 namespace {
 constexpr double sampleRate = 48000, beatSamples = 22500; // 128 BPM
 void require(bool ok, const char* message) { if(!ok) throw std::runtime_error(message); }
+void checkButtonLayout(const juce::Component& parent, int minimum) {
+    for (int i = 0; i < parent.getNumChildComponents(); ++i) {
+        const auto* child = parent.getChildComponent(i);
+        if (!child->isVisible()) continue;
+        const bool actionable = dynamic_cast<const juce::Button*>(child) != nullptr
+                             || dynamic_cast<const juce::ComboBox*>(child) != nullptr;
+        if (!actionable) {
+            checkButtonLayout(*child, minimum);
+            continue;
+        }
+        const auto bounds = child->getBounds();
+        require(bounds.getWidth() >= minimum && bounds.getHeight() >= minimum, "An action target is too small");
+        for (int j = i + 1; j < parent.getNumChildComponents(); ++j) {
+            const auto* other = parent.getChildComponent(j);
+            if (!other->isVisible()) continue;
+            if (dynamic_cast<const juce::Button*>(other) || dynamic_cast<const juce::ComboBox*>(other))
+                require(!bounds.intersects(other->getBounds()), "Two action targets overlap");
+        }
+    }
+}
+
 struct Host : juce::AudioPlayHead {
     PositionInfo position;
     juce::Optional<PositionInfo> getPosition() const override { return position; }
@@ -534,6 +555,40 @@ int main(int argc, char** argv) {
         Host host; host.position.setIsPlaying(true); host.position.setBpm(128); host.position.setPpqPosition(0);
         DuckerProcessor p; p.setPlayHead(&host); p.prepareToPlay(sampleRate, 512);
         std::unique_ptr<juce::AudioProcessorEditor> editor(p.createEditor());
+        editor->setSize(1000, 760);
+        juce::AudioBuffer<float> clockAudio(2, 256);
+        juce::MidiBuffer clockMidi;
+        clockAudio.clear();
+        host.position.setIsPlaying(true);
+        host.position.setBpm(140.0);
+        host.position.setPpqPosition(-1.75);
+        p.processBlock(clockAudio, clockMidi);
+        require(std::abs(p.artworkPhase() - 0.25f) < 0.0001f, "SVG follows a negative host position");
+        const auto onbeat = editor->createComponentSnapshot(juce::Rectangle<int>(52, 93, 51, 88));
+        host.position.setPpqPosition(22.875);
+        p.processBlock(clockAudio, clockMidi);
+        require(std::abs(p.artworkPhase() - 0.875f) < 0.0001f, "SVG follows a host seek");
+        const auto offbeat = editor->createComponentSnapshot(juce::Rectangle<int>(52, 93, 51, 88));
+        int changed = 0;
+        for (int y = 0; y < onbeat.getHeight(); ++y)
+            for (int x = 0; x < onbeat.getWidth(); ++x)
+                if (onbeat.getPixelAt(x, y) != offbeat.getPixelAt(x, y)) ++changed;
+        require(changed > 30, "Native SVG pixels move with beat phase");
+        host.position.setIsPlaying(false);
+        host.position.setPpqPosition(0);
+        p.processBlock(clockAudio, clockMidi);
+        require(std::abs(p.artworkPhase() - 0.875f) < 0.0001f, "SVG holds phase when the host stops");
+        p.setPlayHead(nullptr);
+        p.processBlock(clockAudio, clockMidi);
+        p.processBlock(clockAudio, clockMidi);
+        require(p.artworkPhase() > 0.875f, "SVG advances on audio time without host transport");
+        p.setPlayHead(&host);
+        host.position.setIsPlaying(true);
+        host.position.setBpm(128);
+        host.position.setPpqPosition(0);
+        checkButtonLayout(*editor, 40);
+        editor->setSize(800, 608);
+        checkButtonLayout(*editor, 32);
         editor->setSize(1000, 760);
         testControls(p, *editor);
         testEffectsControls(p, *editor);

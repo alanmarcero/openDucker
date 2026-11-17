@@ -11,10 +11,11 @@
 ## Features
 
 - **Triggers:** Sync follows host transport. MIDI starts the curve on each note. Audio starts it when the detector crosses Threshold. Audio uses the sidechain input, or the main input when no sidechain is connected.
+- **Audition** plays a short impact through the curve and effects. The two booth speakers pulse with each host beat in all three trigger modes and hold when playback stops. Without transport data they follow the audio sample clock.
 - **Curves:** Choose from 16 shapes. Set the cycle to 1/8, 1/4, 1/2, or 1/1. Drag the slope handle to shape recovery. Double-click it to reset. Shift moves the curve against the beat.
 - **Retrigger:** Choose whether a new trigger restarts a running curve. When off, new triggers wait until the curve ends.
 - **Audio detection:** Set Threshold from −60 to 0 dB. Detector HPF and LPF isolate the trigger range. Listen monitors the filtered detector signal. Set either filter to 0 Hz to bypass it.
-- **Low-band ducking:** Turn on BAND to duck frequencies below a selected point from 30 Hz to 1 kHz. Use the headphone control to solo that band.
+- **Low-band ducking:** Turn on Low band to duck frequencies below a selected point from 30 Hz to 1 kHz. Use the headphone control to solo that band.
 - **Effects rack:** Turn on FX On to add tempo-synced stereo or ping-pong Delay, Reverb, Sustain, and Destroy.
 - **Delay and Reverb:** Delay syncs from 1/32 note to one bar and has feedback and bass/treble shelves. Reverb offers modulated Room, Hall, or Plate types. Set decay from 0.2 to 25 seconds, stereo width, and bass/treble shelves. Set FX Mix and output trim from −24 to +12 dB. The output meter shows peaks.
 - **Effects routing:** Choose whether to duck the dry signal, effects, or both. Place ducking before or after the effects. Route Delay and Reverb in series or parallel.

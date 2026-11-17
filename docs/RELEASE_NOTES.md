@@ -1,9 +1,7 @@
-openDucker 2.4.1 makes the native editor controls easier to read and use.
+# openDucker 2.5.0
 
-- Text buttons and toggles are at least 36 px high and use 14 px text. Icon controls have 40 px targets and descriptive tooltips.
-- Curve navigation keeps its compact arrow design with tooltips that explain the single-curve and row navigation actions.
-- The FX panel controls have more room, and the updated native screenshots show the full editor without clipping.
+The two speakers in the DJ booth pulse on host quarter notes in Sync, MIDI and Audio modes. Audition plays an impact through the selected curve and effects. Larger controls, clearer labels and accessible names make the trigger settings and low-band controls easier to operate.
 
-Audio processing, parameter IDs, presets, automation, MIDI behavior, and session compatibility are unchanged.
+![openDucker native editor](https://raw.githubusercontent.com/alanmarcero/openDucker/v2.5.0/docs/screenshots/openDucker-sync.png)
 
-Install the macOS universal VST3/AU or Windows x64 VST3 ZIP, or update through OpenVST Manager. Close your DAW before replacing the plugin and rescan afterward. SHA256SUMS.txt covers both archives. macOS bundles are ad-hoc signed; Windows binaries have no publisher certificate. See docs/VERIFICATION.md for the existing verification coverage.
+Install the macOS universal VST3/AU or Windows x64 VST3 package, or update through OpenVST Manager. Close your DAW before replacing the plug-in and rescan afterward. SHA256SUMS.txt covers both archives.
