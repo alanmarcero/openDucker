@@ -41,4 +41,4 @@ Rescan plugins in your DAW after installation. The macOS bundle is not notarized
 
 ## License
 
-openDucker uses the AGPL-3.0 license. See [LICENSE](LICENSE) and [third-party notices](THIRD_PARTY.md). It is an independent implementation inspired by the workflow and layout of Nicky Romero's Kickstart 2 by Cableguys. It uses no Kickstart or Cableguys code, artwork, curve data, or branding. It is not affiliated with or endorsed by Cableguys and does not claim sonic equivalence. Kickstart, Nicky Romero, and Cableguys are trademarks of their respective owners.
+openDucker uses the AGPL-3.0 license. See [LICENSE](LICENSE) and [third-party notices](THIRD_PARTY.md). This project is not affiliated with or endorsed by Cableguys. Kickstart, Nicky Romero, and Cableguys are trademarks of their respective owners.
