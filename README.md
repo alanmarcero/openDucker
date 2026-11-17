@@ -1,97 +1,44 @@
 # openDucker 2
 
-[Install with OpenVST Manager](https://github.com/alanmarcero/alan-m-OpenVSTManager/releases/latest)
+**Automatic volume ducking and sidechain effects.** Use openDucker on a bass, pad, lead, or bus to make space around a kick. Choose a trigger, shape one of 16 curves, and add effects that follow the curve.
 
-**Fast, sample-accurate volume ducking and sidechain FX.** Drop it on a bass, pad, lead or bus, pick one of 16 curves, drag the slope to fit your kick, trigger from host tempo, MIDI notes or incoming audio, and shape the space with built-in ducked Delay, Reverb, Sustain and Destroy FX.
+[Install with OpenVST Manager](https://github.com/alanmarcero/alan-m-OpenVSTManager/releases/latest) · [Download the latest release](https://github.com/alanmarcero/openDucker/releases/latest)
 
-[Download](https://github.com/alanmarcero/openDucker/releases/latest) · [OpenVST Manager](https://github.com/alanmarcero/alan-m-OpenVSTManager) · [Verification](docs/VERIFICATION.md)
+![openDucker in Sync mode](docs/screenshots/openDucker-sync.png)
 
-![openDucker 2 in Sync mode](docs/screenshots/openDucker-sync.png)
+*Native editor capture. [See capture details](docs/SCREENSHOTS.md).*
 
-*Captured from the running v2.4.1 native editor. [Capture details](docs/SCREENSHOTS.md).*
+## Features
 
-## What's in v2.1
+- **Triggers:** Sync follows host transport. MIDI starts the curve on each note. Audio starts it when the detector crosses Threshold. Audio uses the sidechain input, or the main input when no sidechain is connected.
+- **Curves:** Choose from 16 shapes. Set the cycle to 1/8, 1/4, 1/2, or 1/1. Drag the slope handle to shape recovery. Double-click it to reset. Shift moves the curve against the beat.
+- **Retrigger:** Choose whether a new trigger restarts a running curve. When off, new triggers wait until the curve ends.
+- **Audio detection:** Set Threshold from −60 to 0 dB. Detector HPF and LPF isolate the trigger range. Listen monitors the filtered detector signal. Set either filter to 0 Hz to bypass it.
+- **Low-band ducking:** Turn on BAND to duck frequencies below a selected point from 30 Hz to 1 kHz. Use the headphone control to solo that band.
+- **Effects rack:** Turn on FX On to add tempo-synced stereo or ping-pong Delay, Reverb, Sustain, and Destroy.
+- **Delay and Reverb:** Delay syncs from 1/32 note to one bar and has feedback and bass/treble shelves. Reverb offers modulated Room, Hall, or Plate types. Set decay from 0.2 to 25 seconds, stereo width, and bass/treble shelves. Set FX Mix and output trim from −24 to +12 dB. The output meter shows peaks.
+- **Effects routing:** Choose whether to duck the dry signal, effects, or both. Place ducking before or after the effects. Route Delay and Reverb in series or parallel.
+- **Display and menu:** Compare input and output levels across one curve cycle. Hide or show the effects rack while it continues to process audio. Set trigger smoothing to Off, Low, Medium, or High. The menu can reset slope and shift.
 
-openDucker 2 combines a sample-accurate Kickstart-style volume-shaping ducker and the DJ Duck booth with the full multi-effect chain (Delay, Reverb, Sustain, Destroy and flexible Dry/Wet/Both × Before/After FX ducking routing).
+Sustain raises quieter parts and controls peaks. Destroy offers Tail and Always modes and adds bitcrush, stutter, and drive. MIDI and Audio triggers can work while playback is stopped.
 
-| Control | What it does |
+All controls support host automation and session recall. The plugin supports mono and stereo audio and reports zero latency.
+
+![Audio-triggered ducking](docs/screenshots/openDucker-audio.png)
+
+![MIDI trigger with low-band ducking](docs/screenshots/openDucker-band-midi.png)
+
+## Install and compatibility
+
+openDucker runs as a DAW plugin. It uses host tempo, MIDI, or sidechain audio. Install it with OpenVST Manager or download a package from the [latest release](https://github.com/alanmarcero/openDucker/releases/latest).
+
+| Platform | Formats |
 | --- | --- |
-| **Length 1/8 · 1/4 · 1/2 · 1/1** | Cycle length, synced to the host tempo. |
-| **SYNC / MIDI / AUDIO** | **Sync** loops the curve with the host transport. **MIDI** restarts it on every note-on, to the sample. **Audio** restarts it when the sidechain input (or the main input if no sidechain is connected) crosses **Threshold**. |
-| **Mix** | Blend between the original and the ducked signal (default 100%). |
-| **16 curves** | Click one of the 16 curve buttons, or use the arrows: chevrons step one curve, triangles jump a row of eight. |
-| **Slope handle** | Drag the handle in the display to shorten or stretch the curve inside the cycle (5–100%). Double-click it to reset. |
-| **Shift** | Moves the curve against the beat. In MIDI and Audio modes it delays the curve after each trigger. |
-| **Threshold** | Audio trigger level, −60 to 0 dB. |
-| **Detector HPF / LPF** | Filter the sidechain (or main input fallback) before audio trigger detection. Both filters are automatable; set either to 0 Hz to bypass it. |
-| **Listen** | Audition the filtered detector input at the plugin output while tuning the detector filters. |
-| **Retrigger** (loop icon) | When on, a new trigger restarts a running curve; when off, triggers are ignored until it finishes. |
-| **BAND, band slider, headphones** | Duck only the low band below the band frequency (30 Hz–1 kHz) with a Linkwitz-Riley 4th-order split; the headphones solo that band. |
-| **Hide FX / Show FX** | Expand or collapse the FX rack while keeping audio processing active. |
-| **FX On, Duck (Dry / Wet / Both), Before FX / After FX, Flow (Serial / Parallel)** | Enable the effects rack, choose whether the dry signal, wet effects, or both duck, place ducking before or after the FX chain, and route Delay and Reverb in serial or parallel. |
-| **Delay** | Tempo-synced stereo or ping-pong delay (`1/32` to `1 bar`, default `1/8 dotted`) with Feedback and Bass/Treble shelves (with 0 dB drag detents). |
-| **Reverb** | Modulated stereo Room, Hall and Plate reverb (0.2–25 s decay) with stereo Width and Bass/Treble shelves. |
-| **Sustain, Destroy (Tail / Always), FX Mix, Output** | Upward/peak sustain compression, bitcrush/stutter/drive Destroy stage (on the final 5 s of the FX tail or continuously), dry/wet FX crossfade, and output trim (−24 to +12 dB) with peak meter. |
-| **Menu** | Trigger smoothing (Off, Low, Medium, High), reset slope and shift, About. |
+| macOS 11 or later, Intel or Apple Silicon | VST3, AU |
+| Windows 10 or later, x64 | VST3 |
 
-The display overlays the input (grey) and output (yellow) over one cycle, so you can line the curve up with a kick and bass by eye. The editor resizes freely at a fixed aspect ratio.
+Rescan plugins in your DAW after installation. The macOS bundle is not notarized.
 
-![Audio trigger](docs/screenshots/openDucker-audio.png)
+## License
 
-![MIDI trigger with Band](docs/screenshots/openDucker-band-midi.png)
-
-## Using it
-
-1. Insert openDucker on the sound you want to duck (bass, pad, lead, bus).
-2. **Sync:** start the transport and choose a Length. **MIDI:** route a kick or drum track's MIDI to the plugin. **Audio:** enable the plugin's sidechain input in your DAW and send the kick to it, or leave it disconnected to trigger from the plugin's own input. Use **Detector HPF** and **Detector LPF** to isolate the frequency range that should trigger ducking; **Listen** lets you hear that filtered signal.
-3. Pick a curve, then drag the slope handle until the recovery fits your kick.
-4. Turn on **BAND** to keep the mids and highs untouched, and use the headphones to hear only the ducked band.
-5. Turn on **FX On** to add tempo-synced Delay, Reverb, Sustain and Destroy, and select **Dry**, **Wet** or **Both** (**Before FX** or **After FX**) to duck the source, the FX tails, or everything together.
-
-All controls support host automation and session recall. Mono and stereo, 32-bit and 64-bit processing are supported. Latency is zero samples. Ducking in Sync mode ramps to unity when the host is stopped or provides no musical timing; it never free-runs. MIDI and Audio modes work while stopped, using the host tempo (120 BPM if none is available).
-
-## Timing you can inspect
-
-In Sync mode, openDucker reads the host PPQ and BPM at the start of each audio block and computes the musical position of **each sample** from that anchor. No UI timer or free-running oscillator is involved, so the curve stays aligned across buffer sizes, seeks, loops and tempo changes. MIDI notes are applied at their exact sample offsets. Audio triggers fire on the sample that crosses the threshold, with a 30 ms hold-off and re-arm once the level falls below half the threshold. Host timing is the accuracy boundary: a host that changes tempo or seeks inside a buffer without reporting it cannot be followed by any plugin.
-
-## Install
-
-1. Download and install [OpenVST Manager](https://github.com/alanmarcero/alan-m-OpenVSTManager/releases/latest) for macOS or Windows.
-2. Open the manager and refresh the catalog.
-3. Choose **openDucker**, select **VST3** (or **AU** on macOS), and install.
-4. Rescan plugins in your DAW. If you chose a custom install folder, add it to the DAW's search paths.
-
-For manual installation, extract your platform ZIP from the [latest release](https://github.com/alanmarcero/openDucker/releases/latest) and copy the entire bundle into your DAW's plugin folder:
-
-| Platform | Formats | Typical user folder |
-| --- | --- | --- |
-| macOS 11+, Apple Silicon or Intel | VST3, AU | `~/Library/Audio/Plug-Ins/VST3` or `~/Library/Audio/Plug-Ins/Components` |
-| Windows 10+, x64 | VST3 | A VST3 folder configured in your DAW, such as `%LOCALAPPDATA%/Programs/Common/VST3` |
-
-Close your DAW before replacing a plugin and rescan afterward. macOS bundles are ad-hoc signed, not Apple notarized. Verify the release checksum before using macOS's security override for a downloaded bundle. Windows binaries have no publisher certificate. There is no standalone application because host transport, MIDI and sidechain audio are essential to the effect.
-
-## Build and test
-
-CMake 3.22+, a C++20 compiler, and Git are required. CMake fetches JUCE 8.0.9. On macOS, install Xcode command-line tools; on Windows, use Visual Studio 2022 with C++ desktop tools.
-
-```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build --config Release --parallel
-ctest --test-dir build -C Release --output-on-failure
-```
-
-On macOS, add `-DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0` for a universal build. Bundles are in `build/openDucker_artefacts/Release/`.
-
-The DSP tests need no third-party dependencies or graphics session:
-
-```sh
-cmake -S . -B build-core -DOD_BUILD_PLUGIN=OFF -DCMAKE_BUILD_TYPE=Release
-cmake --build build-core
-ctest --test-dir build-core --output-on-failure
-```
-
-The native test exercises real processor audio, every editor control and session state, and captures the editor into `build/screenshots/`. CI also runs address/undefined-behavior sanitizers and pluginval. [Verification record](docs/VERIFICATION.md).
-
-## License and credits
-
-AGPL-3.0; see [LICENSE](LICENSE) and [third-party notices](THIRD_PARTY.md). openDucker is an independent implementation inspired by the workflow and layout of Nicky Romero's Kickstart 2 by Cableguys. It contains no Kickstart or Cableguys code, artwork, curve data or branding, is not affiliated with or endorsed by them, and does not claim sonic equivalence. "Kickstart", "Nicky Romero" and "Cableguys" are trademarks of their respective owners.
+openDucker uses the AGPL-3.0 license. See [LICENSE](LICENSE) and [third-party notices](THIRD_PARTY.md). It is an independent implementation inspired by the workflow and layout of Nicky Romero's Kickstart 2 by Cableguys. It uses no Kickstart or Cableguys code, artwork, curve data, or branding. It is not affiliated with or endorsed by Cableguys and does not claim sonic equivalence. Kickstart, Nicky Romero, and Cableguys are trademarks of their respective owners.
