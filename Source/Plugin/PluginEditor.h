@@ -6,7 +6,7 @@
 namespace look {
 const juce::Colour background {0xff0d1317}, panel {0xff152026}, panelHover {0xff1e2c33}, display {0xff0a1216},
     mint {0xff48f0c8}, brightMint {0xff80f5dc}, yellow {0xffffbe3b}, darkMint {0xff23483f},
-    paper {0xffe6f0f5}, muted {0xff869ca8}, ink {0xff0d1317};
+    paper {0xffe6f0f5}, muted {0xffa2b5c0}, ink {0xff0d1317};
 }
 
 class DuckLookAndFeel final : public juce::LookAndFeel_V4 {
@@ -72,7 +72,7 @@ private:
     CurveDisplay display;
     EffectsPanel effectsPanel;
     juce::TextButton effectsToggle;
-    juce::TextButton pushItButton {"PUSH IT"};
+    juce::TextButton pushItButton {"Audition"};
     bool effectsExpanded = true;
     juce::Slider mix, band, shift, threshold, detectorHpf, detectorLpf;
     juce::Label detectorHpfLabel {{}, "DETECTOR HPF"}, detectorLpfLabel {{}, "DETECTOR LPF"};
@@ -84,6 +84,7 @@ private:
         previous {GlyphButton::Glyph::Previous}, next {GlyphButton::Glyph::Next},
         previousBank {GlyphButton::Glyph::PreviousBank}, nextBank {GlyphButton::Glyph::NextBank};
     std::vector<std::unique_ptr<CurveButton>> curveButtons;
+    std::unique_ptr<juce::Drawable> boothSpeaker;
     juce::Image mascot, faceplate;
     juce::TooltipWindow tooltips {this, 600};
     using SliderAttachment = juce::AudioProcessorValueTreeState::SliderAttachment;

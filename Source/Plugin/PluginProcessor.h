@@ -1,5 +1,6 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
+#include "ArtworkBeatClock.h"
 #include "Crossover.h"
 #include "Ducker.h"
 #include "Effects.h"
@@ -37,6 +38,7 @@ public:
     juce::AudioProcessorValueTreeState parameters;
     /// Peak of the input and output at each position of the cycle, for the display.
     std::array<std::atomic<float>, displayBins> inputBins, outputBins;
+    float artworkPhase() const noexcept { return artworkClock.currentPhase(); }
     std::atomic<float> visualPhase {0}, visualGain {1}, hostBpm {0};
     std::atomic<float> outputPeak {0}, destroyLevel {0};
     std::atomic<bool> visualRunning {false};
@@ -68,6 +70,7 @@ private:
     juce::SmoothedValue<double> mixAmount, bandBlend, soloBlend, dryDuck, wetPreDuck, wetPostDuck, fxBlend, wetMix, outputGain, activeBlend;
     std::atomic<bool> resetEffects {false};
     bool effectsRunning = false;
+    ArtworkBeatClock artworkClock;
     double sampleRate = 48000, bandFrequency = -1;
     int lastBin = -1;
     float binInput = 0, binOutput = 0;

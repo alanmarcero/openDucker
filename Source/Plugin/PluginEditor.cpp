@@ -187,7 +187,7 @@ void DuckLookAndFeel::drawButtonBackground(juce::Graphics& g, juce::Button& butt
 }
 
 void DuckLookAndFeel::drawButtonText(juce::Graphics& g, juce::TextButton& button, bool, bool) {
-    drawText(g, button.getButtonText(), button.getLocalBounds().toFloat(), static_cast<float>(button.getHeight()) * 0.46f,
+    drawText(g, button.getButtonText(), button.getLocalBounds().toFloat(), static_cast<float>(button.getHeight()) * 0.37f,
         button.getToggleState() ? look::ink : look::paper);
 }
 
@@ -216,7 +216,7 @@ void GlyphButton::paintButton(juce::Graphics& g, bool over, bool down) {
     juce::Path path;
     switch(glyph) {
         case Glyph::Menu:
-            for(int line = -1; line <= 1; ++line) g.fillRect(centre.x - size * 0.85f, centre.y + static_cast<float>(line) * size * 0.55f - 1.2f, size * 1.7f, 2.5f);
+            for(int line = -1; line <= 1; ++line) g.fillRect(centre.x - size * 0.58f, centre.y + static_cast<float>(line) * size * 0.35f - 1.2f, size * 1.16f, 2.5f);
             break;
         case Glyph::Previous: case Glyph::Next: {
             const float direction = glyph == Glyph::Next ? 1.0f : -1.0f;
@@ -386,6 +386,7 @@ void CurveDisplay::paint(juce::Graphics& g) {
 
 DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(p), display(p), effectsPanel(p) {
     setLookAndFeel(&theme);
+    boothSpeaker = juce::Drawable::createFromImageData(BinaryData::boothspeaker_svg, BinaryData::boothspeaker_svgSize);
     auto heroDuck = juce::ImageCache::getFromMemory(BinaryData::cyberduckhero_png, BinaryData::cyberduckhero_pngSize);
     mascot = !heroDuck.isNull() ? heroDuck : juce::ImageCache::getFromMemory(BinaryData::djduck_png, BinaryData::djduck_pngSize);
     faceplate = juce::ImageCache::getFromMemory(BinaryData::analogcyberfaceplate_png, BinaryData::analogcyberfaceplate_pngSize);
@@ -395,7 +396,7 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
     addAndMakeVisible(effectsToggle);
     addAndMakeVisible(pushItButton);
     pushItButton.setComponentID("pushIt");
-    pushItButton.setTooltip("PUSH IT: trigger an impact sound to demo the ducking pump, delay, reverb, and saturation!");
+    pushItButton.setTooltip("Play a short impact through the ducking curve and effects.");
     pushItButton.onClick = [this] { owner.triggerDemoImpact(); };
     pushItButton.setColour(juce::TextButton::buttonColourId, look::panel.brighter(0.12f));
     pushItButton.setColour(juce::TextButton::textColourOffId, look::brightMint);
@@ -408,9 +409,10 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
         effectsToggle.setButtonText(effectsExpanded ? "Hide FX" : "Show FX");
         const int targetHeight = effectsExpanded ? expandedHeight : collapsedHeight;
         const double ratio = 1000.0 / static_cast<double>(targetHeight);
-        setResizeLimits(600, juce::roundToInt(600.0 / ratio), 2000, targetHeight * 2);
+        const int currentWidth = getWidth();
         getConstrainer()->setFixedAspectRatio(ratio);
-        setSize(getWidth(), juce::roundToInt(static_cast<double>(getWidth()) / ratio));
+        setResizeLimits(800, juce::roundToInt(800.0 / ratio), 2000, targetHeight * 2);
+        setSize(currentWidth, juce::roundToInt(static_cast<double>(currentWidth) / ratio));
     };
 
     mix.setComponentID("mix"); mix.setName("Mix");
@@ -464,7 +466,7 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
         triggerButtons[i].onClick = [this, i] { setChoice("trigger", static_cast<int>(i)); };
         addAndMakeVisible(triggerButtons[i]);
     }
-    bandButton.setButtonText("BAND"); bandButton.setComponentID("band"); bandButton.setClickingTogglesState(true);
+    bandButton.setButtonText("Low band"); bandButton.setComponentID("band"); bandButton.setClickingTogglesState(true);
     bandButton.setTooltip("Duck only the low band below the band frequency.");
     addAndMakeVisible(bandButton);
 
@@ -477,7 +479,15 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
     next.setComponentID("next"); next.setTooltip("Next curve."); next.onClick = [this] { stepCurve(1); };
     previousBank.setComponentID("previousBank"); previousBank.setTooltip("Previous row of curves."); previousBank.onClick = [this] { stepCurve(-8); };
     nextBank.setComponentID("nextBank"); nextBank.setTooltip("Next row of curves."); nextBank.onClick = [this] { stepCurve(8); };
-    for(auto* button : {&retrigger, &solo, &menu, &previous, &next, &previousBank, &nextBank}) addAndMakeVisible(*button);
+    retrigger.setTitle("Retrigger curve");
+    solo.setTitle("Solo low band");
+    menu.setTitle("Trigger settings");
+    previous.setTitle("Previous curve");
+    next.setTitle("Next curve");
+    previousBank.setTitle("Previous row of curves");
+    nextBank.setTitle("Next row of curves");
+    for (auto* button : {&retrigger, &solo, &menu, &previous, &next, &previousBank, &nextBank})
+        addAndMakeVisible(*button);
 
     retriggerAttachment = std::make_unique<ButtonAttachment>(p.parameters, "retrigger", retrigger);
     soloAttachment = std::make_unique<ButtonAttachment>(p.parameters, "bandSolo", solo);
@@ -505,7 +515,7 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
         }, nullptr);
     rateAttachment->sendInitialUpdate(); triggerAttachment->sendInitialUpdate(); curveAttachment->sendInitialUpdate();
     setResizable(true, true);
-    setResizeLimits(600, 434, 2000, expandedHeight * 2);
+    setResizeLimits(800, expandedHeight * 4 / 5, 2000, expandedHeight * 2);
     getConstrainer()->setFixedAspectRatio(1000.0 / static_cast<double>(expandedHeight));
     setSize(1000, expandedHeight);
     startTimerHz(30);
@@ -581,8 +591,8 @@ void DuckerEditor::resized() {
     band.setBounds(area(22, 472, 306, 26));
 
     // Right column
-    for(size_t i = 0; i < rateButtons.size(); ++i) rateButtons[i].setBounds(area(354 + static_cast<float>(i) * 64, 10, 60, 36));
-    for(size_t i = 0; i < triggerButtons.size(); ++i) triggerButtons[i].setBounds(area(636 + static_cast<float>(i) * 82, 10, 78, 36));
+    for(size_t i = 0; i < rateButtons.size(); ++i) rateButtons[i].setBounds(area(354 + static_cast<float>(i) * 64, 8, 60, 40));
+    for(size_t i = 0; i < triggerButtons.size(); ++i) triggerButtons[i].setBounds(area(636 + static_cast<float>(i) * 82, 8, 78, 40));
     retrigger.setBounds(area(892, 8, 40, 40));
     menu.setBounds(area(940, 8, 40, 40));
 
@@ -602,7 +612,7 @@ void DuckerEditor::resized() {
     detectorHpf.setBounds(area(354, 513, 218, 30));
     detectorLpfLabel.setBounds(area(588, 500, 218, 13));
     detectorLpf.setBounds(area(588, 513, 218, 30));
-    detectorMonitorButton.setBounds(area(836, 504, 148, 36));
+    detectorMonitorButton.setBounds(area(836, 502, 148, 40));
 
     effectsPanel.setBounds(area(22, 552, 962, 198));
 }
@@ -639,7 +649,18 @@ void DuckerEditor::paintDuckBooth(juce::Graphics& g, juce::Rectangle<float> area
         g.drawEllipse(juce::Rectangle<float>(coneRadius * 2, coneRadius * 2).withCentre(centre).reduced(static_cast<float>(ring) * 5.0f * s), 1.0f);
     }
 
-    // DJ Duck Mascot character bouncing slightly with pump!
+    // The speakers track quarter notes independently of the selected trigger mode.
+    if (boothSpeaker) {
+        const float phaseLeft = 1.0f - owner.artworkPhase();
+        const float pulse = phaseLeft * phaseLeft;
+        for (const float side : {-1.0f, 1.0f}) {
+            const auto stack = juce::Rectangle<float>((32.0f + 4.0f * pulse) * s, (70.4f + 8.8f * pulse) * s)
+                                   .withCentre(centre.translated(side * cabinet.getWidth() * 0.38f, 0.0f));
+            boothSpeaker->drawWithin(g, stack, juce::RectanglePlacement::centred, 0.66f + 0.34f * pulse);
+        }
+    }
+
+    // DJ Duck follows the ducking envelope.
     {
         const juce::Graphics::ScopedSaveState duckState(g);
         g.setImageResamplingQuality(juce::Graphics::highResamplingQuality);

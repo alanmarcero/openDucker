@@ -81,6 +81,7 @@ DuckerProcessor::DuckerProcessor()
 
 void DuckerProcessor::prepareToPlay(double rate, int) {
     sampleRate = rate;
+    artworkClock.reset();
     engine.prepare(rate); crossover.prepare(rate); detector.prepare(rate); effects.prepare(rate);
     for(auto& filter : detectorFilters) { filter.prepare(rate); filter.reset(); }
     setLatencySamples(0);
@@ -142,7 +143,10 @@ bool DuckerProcessor::isBusesLayoutSupported(const BusesLayout& buses) const {
 template<typename Sample> void DuckerProcessor::process(juce::AudioBuffer<Sample>& buffer, juce::MidiBuffer& midi, bool bypassed) {
     juce::ScopedNoDenormals noDenormals;
     duck::Transport t;
-    if(auto* playHead = getPlayHead()) if(const auto position = playHead->getPosition()) {
+    auto* playHead = getPlayHead();
+    const auto position = playHead ? playHead->getPosition() : juce::Optional<juce::AudioPlayHead::PositionInfo>{};
+    artworkClock.update(position, buffer.getNumSamples(), sampleRate);
+    if (position) {
         t.playing = position->getIsPlaying();
         if(const auto ppq = position->getPpqPosition()) if(const auto bpm = position->getBpm()) {
             t.ppq = *ppq; t.bpm = *bpm;
