@@ -110,21 +110,21 @@ void EffectsPanel::resized() {
     const auto area = [s](float x, float y, float w, float h) {
         return juce::Rectangle<float>(x * s, y * s, w * s, h * s).toNearestInt();
     };
-    switches[0].setBounds(area(0, 4, 86, 28));
-    choices[0].setBounds(area(138, 4, 92, 28));
-    choices[1].setBounds(area(238, 4, 122, 28));
-    choices[4].setBounds(area(412, 4, 110, 28));
+    switches[0].setBounds(area(0, 2, 86, 36));
+    choices[0].setBounds(area(138, 2, 92, 36));
+    choices[1].setBounds(area(238, 2, 122, 36));
+    choices[4].setBounds(area(412, 2, 110, 36));
 
-    switches[1].setBounds(area(12, 50, 96, 26));
-    choices[2].setBounds(area(190, 50, 110, 26));
-    switches[2].setBounds(area(337, 50, 102, 26));
-    choices[3].setBounds(area(515, 50, 110, 26));
-    choices[5].setBounds(area(840, 50, 110, 26));
+    switches[1].setBounds(area(12, 48, 96, 36));
+    choices[2].setBounds(area(190, 48, 110, 36));
+    switches[2].setBounds(area(337, 48, 102, 36));
+    choices[3].setBounds(area(515, 48, 110, 36));
+    choices[5].setBounds(area(840, 48, 110, 36));
 
     for(int i = 0; i < 4; ++i) {
-        knobs[static_cast<size_t>(i)].setBounds(area(4 + static_cast<float>(i) * 76, 82, 76, 104));
-        knobs[static_cast<size_t>(i + 4)].setBounds(area(329 + static_cast<float>(i) * 76, 82, 76, 104));
-        knobs[static_cast<size_t>(i + 8)].setBounds(area(654 + static_cast<float>(i) * 76, 82, 76, 104));
+        knobs[static_cast<size_t>(i)].setBounds(area(4 + static_cast<float>(i) * 76, 88, 76, 104));
+        knobs[static_cast<size_t>(i + 4)].setBounds(area(329 + static_cast<float>(i) * 76, 88, 76, 104));
+        knobs[static_cast<size_t>(i + 8)].setBounds(area(654 + static_cast<float>(i) * 76, 88, 76, 104));
     }
 }
 
