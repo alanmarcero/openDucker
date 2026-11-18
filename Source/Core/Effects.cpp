@@ -233,7 +233,10 @@ Stereo Effects::reverb(Stereo input) noexcept {
  Stereo output{};
  for(size_t i=0;i<3;++i) {
   presetMix[i]=lerp(presetMix[i],static_cast<int>(i)==parameters.reverbType?1:0,smoothing);
-  // Keep every preset warm so switching spaces crossfades actual tails without rebuilding buffers.
+  if(presetMix[i]<1e-6&&static_cast<int>(i)!=parameters.reverbType) {
+   presetMix[i]=0;
+   continue;
+  }
   const auto y=reverbs[i].process(input,smoothing);
   output.left+=presetMix[i]*y.left; output.right+=presetMix[i]*y.right;
  }
@@ -298,8 +301,10 @@ Stereo Effects::process(Stereo input,double sourcePeak) noexcept {
  reverbMix=lerp(reverbMix,parameters.reverbEnabled?1:0,smoothing);
  // Warm stages preserve valid current tails across bypass fades and avoid clearing large buffers on the audio thread.
  parallelMix=lerp(parallelMix,parameters.parallel?1:0,smoothing);
- const auto delayed=delay(input);
- const auto reverberated=reverb(mix(input,delayed,delayMix*(1-parallelMix)));
+ const bool runDelay=parameters.delayEnabled||delayMix>1e-6;
+ const bool runReverb=parameters.reverbEnabled||reverbMix>1e-6;
+ const auto delayed=runDelay?delay(input):Stereo{};
+ const auto reverberated=runReverb?reverb(mix(input,delayed,delayMix*(1-parallelMix))):Stereo{};
  const auto serial=mix(mix(input,delayed,delayMix),reverberated,reverbMix);
  const double direct=(1-delayMix)*(1-reverbMix);
  const Stereo parallel{delayMix*delayed.left+reverbMix*reverberated.left+direct*input.left,

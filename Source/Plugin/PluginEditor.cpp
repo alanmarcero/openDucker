@@ -586,7 +586,10 @@ void DuckerEditor::showMenu() {
 
 void DuckerEditor::timerCallback() {
     display.repaint();
-    effectsPanel.refresh();
+    if(effectsPanel.isVisible()) {
+        const float s = static_cast<float>(getWidth()) / 1000.0f;
+        effectsPanel.repaint(juce::Rectangle<float>(660.0f * s, 4.0f * s, 306.0f * s, 74.0f * s).toNearestInt());
+    }
     repaint(0, 0, getWidth() * 35 / 100, juce::roundToInt(280.0f * static_cast<float>(getWidth()) / 1000.0f));
 }
 

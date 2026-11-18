@@ -246,14 +246,18 @@ template<typename Sample> void DuckerProcessor::process(juce::AudioBuffer<Sample
             for(; nextEvent != endOfEvents && (*nextEvent).samplePosition <= sample; ++nextEvent)
                 if((*nextEvent).getMessage().isNoteOn()) engine.trigger();
         }
-        const auto& detectorSource = hasSidechain ? sidechain : main;
-        const double sourceLeft = detectorSource.getNumChannels() > 0 ? static_cast<double>(detectorSource.getSample(0, sample)) : 0.0;
-        const double sourceRight = detectorSource.getNumChannels() > 1 ? static_cast<double>(detectorSource.getSample(1, sample)) : sourceLeft;
-        const double detectorLeft = detectorFilters[0].process(sourceLeft);
-        const double detectorRight = detectorFilters[1].process(sourceRight);
-        if(trigger == duck::Trigger::Audio) {
-            const double level = std::max({std::abs(demoL), std::abs(demoR), std::abs(detectorLeft), std::abs(detectorRight)});
-            if(detector.process(level)) engine.trigger();
+        const bool needDetector = trigger == duck::Trigger::Audio || detectorMonitor;
+        double detectorLeft = 0.0, detectorRight = 0.0;
+        if(needDetector) {
+            const auto& detectorSource = hasSidechain ? sidechain : main;
+            const double sourceLeft = detectorSource.getNumChannels() > 0 ? static_cast<double>(detectorSource.getSample(0, sample)) : 0.0;
+            const double sourceRight = detectorSource.getNumChannels() > 1 ? static_cast<double>(detectorSource.getSample(1, sample)) : sourceLeft;
+            detectorLeft = detectorFilters[0].process(sourceLeft);
+            detectorRight = detectorFilters[1].process(sourceRight);
+            if(trigger == duck::Trigger::Audio) {
+                const double level = std::max({std::abs(demoL), std::abs(demoR), std::abs(detectorLeft), std::abs(detectorRight)});
+                if(detector.process(level)) engine.trigger();
+            }
         }
         gain = engine.nextGain();
         const double ducked = 1 + (gain - 1) * mixAmount.getNextValue();
@@ -261,8 +265,9 @@ template<typename Sample> void DuckerProcessor::process(juce::AudioBuffer<Sample
         const double dryMask = dryDuck.getNextValue(), preMask = wetPreDuck.getNextValue(), postMask = wetPostDuck.getNextValue();
         const double blend = fxBlend.getNextValue(), mix = wetMix.getNextValue() * blend, trim = outputGain.getNextValue();
         const duck::Stereo input {static_cast<double>(main.getSample(0, sample)) + demoL, static_cast<double>(main.getSample(stereo ? 1 : 0, sample)) + demoR};
-        const auto bandsL = crossover.split(0, input.left);
-        const auto bandsR = stereo ? crossover.split(1, input.right) : bandsL;
+        const bool useCrossover = bandAmount > 0.0;
+        const duck::Bands bandsL = useCrossover ? crossover.split(0, input.left) : duck::Bands{input.left, 0.0};
+        const duck::Bands bandsR = useCrossover ? (stereo ? crossover.split(1, input.right) : bandsL) : duck::Bands{input.right, 0.0};
         const auto shapeChannel = [&](double x, duck::Bands bands, double mask) {
             const double branchGain = 1 + (ducked - 1) * mask;
             const double selected = x + (bands.low - x) * bandAmount;
