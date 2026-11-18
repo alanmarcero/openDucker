@@ -17,7 +17,7 @@ double trapezoid(double x, double rise, double fallStart, double fallEnd) noexce
 double curveValue(int index, double x) noexcept {
     x = clamp01(x);
     switch(std::clamp(index, 0, curveCount - 1)) {
-        case 0: return 1 - std::pow(1 - x, 3);
+        case 0: { const double u = 1 - x; return 1 - u * u * u; }
         case 1: return x * x;
         case 2: return smoother(x);
         case 3: return smooth(std::pow(x, 0.6));
@@ -26,16 +26,19 @@ double curveValue(int index, double x) noexcept {
         case 6:
             if(x < 0.55) return 1 - smooth(x / 0.55);
             return x < 0.85 ? smooth((x - 0.55) / 0.3) : 1.0;
-        case 7: return x < 0.8 ? std::pow(x / 0.8, 2.0) : (1 - x) / 0.2;
+        case 7: { const double u = x / 0.8; return x < 0.8 ? u * u : (1 - x) / 0.2; }
         case 8: return x;
         case 9: return std::pow(smooth(x), 1.6);
         case 10: return smooth((x - 0.15) / 0.55);
         case 11: return x < 0.9 ? smooth(x / 0.15) : smooth((1 - x) / 0.1);
         case 12: return trapezoid(x, 0.25, 0.5, 0.75);
         case 13: return 1 - x;
-        case 14:
+        case 14: {
             if(x < 0.35) return 1 - smooth(x / 0.35);
-            return x < 0.65 ? 0.0 : std::pow(smooth((x - 0.65) / 0.35), 2.0);
+            if(x < 0.65) return 0.0;
+            const double u = smooth((x - 0.65) / 0.35);
+            return u * u;
+        }
         default:
             if(x < 0.25) return 0.55 * smooth(x / 0.25);
             if(x < 0.45) return 0.55 - 0.35 * smooth((x - 0.25) / 0.2);
