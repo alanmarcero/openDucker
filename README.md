@@ -4,7 +4,7 @@
 
 [Install with OpenVST Manager](https://github.com/alanmarcero/alan-m-OpenVSTManager/releases/latest) · [Download the latest release](https://github.com/alanmarcero/openDucker/releases/latest)
 
-![openDucker in Sync mode](docs/screenshots/openDucker-sync.png)
+![openDucker in Sync mode](docs/screenshots/preview.png)
 
 *Native editor capture. [See capture details](docs/SCREENSHOTS.md).*
 
