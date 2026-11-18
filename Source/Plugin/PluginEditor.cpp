@@ -157,7 +157,7 @@ void DuckLookAndFeel::drawLinearSlider(juce::Graphics& g, int x, int y, int widt
         g.fillRoundedRectangle(bounds.withRight(std::max(bounds.getX() + 4, position)), 4);
         g.setColour(look::muted.withAlpha(0.3f));
         g.drawRoundedRectangle(bounds, 4, 1);
-        drawText(g, slider.getName().toUpperCase() + " " + slider.getTextFromValue(slider.getValue()), bounds, bounds.getHeight() * 0.42f, look::paper, juce::Justification::centred, true);
+        drawText(g, slider.getName() + "  " + slider.getTextFromValue(slider.getValue()), bounds, bounds.getHeight() * 0.42f, look::paper, juce::Justification::centred, true);
         return;
     }
     const float trackHeight = bounds.getHeight() * 0.55f;
@@ -352,14 +352,16 @@ void CurveDisplay::paint(juce::Graphics& g) {
     // Ducking curve
     const auto curveArea = juce::Rectangle<float>(0, height * 0.06f, width, height * 0.88f);
     const int curve = static_cast<int>(owner.parameters.getRawParameterValue("curve")->load());
+    const double tensionVal = owner.parameters.getRawParameterValue("tension")->load() * 0.01;
+    const double floorVal = owner.parameters.getRawParameterValue("floor")->load() * 0.01;
     juce::Path path;
     const float length = lengthFraction();
     for(int px = 0; px <= juce::roundToInt(width); ++px) {
         const float x = static_cast<float>(px);
-        const float y = curveArea.getBottom() - static_cast<float>(duck::cycleGain(curve, x / width, length)) * curveArea.getHeight();
+        const float y = curveArea.getBottom() - static_cast<float>(duck::cycleGain(curve, x / width, length, tensionVal, floorVal)) * curveArea.getHeight();
         if(px == 0) path.startNewSubPath(x, y); else path.lineTo(x, y);
     }
-    path.lineTo(width - 1, curveArea.getBottom() - static_cast<float>(duck::cycleGain(curve, 0, length)) * curveArea.getHeight());
+    path.lineTo(width - 1, curveArea.getBottom() - static_cast<float>(duck::cycleGain(curve, 0, length, tensionVal, floorVal)) * curveArea.getHeight());
 
     // Glowing stroke
     glow(g, bounds, look::yellow.withAlpha(0.06f));
@@ -426,12 +428,22 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
     configureBar(band, "bandFrequency", "Band", "Hz", "Band split frequency. With BAND on, only frequencies below this cutoff are ducked.");
     band.setSliderStyle(juce::Slider::LinearHorizontal); band.setDoubleClickReturnValue(true, 150);
     configureBar(shift, "shift", "Shift", "%", "Offset the curve against the beat. In MIDI and Audio modes this delays the curve after each trigger.");
+    configureBar(tension, "tension", "Tension", "%", "Warp the active ducking curve between snappy concave (-100%) and tight hold (+100%).");
+    tension.setDoubleClickReturnValue(true, 0);
+    configureBar(floor, "floor", "Floor", "%", "Minimum gain floor at the bottom of the ducking curve (0% = full mute, 100% = no ducking).");
+    floor.setDoubleClickReturnValue(true, 0);
     configureBar(threshold, "threshold", "Threshold", "dB", "Audio trigger level. Uses the sidechain input when connected, otherwise the main input.");
     threshold.setDoubleClickReturnValue(true, -24);
+    bandSlope.setComponentID("bandSlope");
+    bandSlope.setName("Band slope");
+    bandSlope.addItemList({"12 dB/oct", "24 dB/oct", "48 dB/oct"}, 1);
+    bandSlope.setTooltip("Crossover filter steepness for Low Band ducking mode.");
+    addAndMakeVisible(bandSlope);
+    bandSlopeAttachment = std::make_unique<ComboBoxAttachment>(p.parameters, "bandSlope", bandSlope);
     configureBar(detectorHpf, "detectorHpf", "Detector HPF", "Hz", "High-pass filter on the audio-trigger detector. 0 Hz bypasses it.");
     configureBar(detectorLpf, "detectorLpf", "Detector LPF", "Hz", "Low-pass filter on the audio-trigger detector. 0 Hz bypasses it.");
-    detectorHpf.textFromValueFunction = [](double value) { return value < 1.0 ? juce::String("OFF") : juce::String(juce::roundToInt(value)) + " Hz"; };
-    detectorLpf.textFromValueFunction = [](double value) { return value < 1.0 ? juce::String("OFF") : juce::String(juce::roundToInt(value)) + " Hz"; };
+    detectorHpf.textFromValueFunction = [](double value) { return value < 1.0 ? juce::String("Off") : juce::String(juce::roundToInt(value)) + " Hz"; };
+    detectorLpf.textFromValueFunction = [](double value) { return value < 1.0 ? juce::String("Off") : juce::String(juce::roundToInt(value)) + " Hz"; };
     detectorHpf.setDoubleClickReturnValue(true, 0);
     detectorLpf.setDoubleClickReturnValue(true, 0);
     detectorHpfLabel.setComponentID("detectorHpfLabel");
@@ -456,7 +468,7 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
         rateButtons[i].onClick = [this, i] { setChoice("rate", static_cast<int>(i)); };
         addAndMakeVisible(rateButtons[i]);
     }
-    const juce::StringArray triggerNames {"SYNC", "MIDI", "AUDIO"};
+    const juce::StringArray triggerNames {"Sync", "MIDI", "Audio"};
     const juce::StringArray triggerTips {"Loop the curve with the host transport.", "Restart the curve on every incoming MIDI note.",
         "Restart the curve when the sidechain (or main input) crosses the threshold."};
     for(size_t i = 0; i < triggerButtons.size(); ++i) {
@@ -530,6 +542,8 @@ void DuckerEditor::configureBar(juce::Slider& slider, const char* id, const juce
     auto attachment = std::make_unique<SliderAttachment>(owner.parameters, id, slider);
     if(juce::String(id) == "bandFrequency") bandAttachment = std::move(attachment);
     else if(juce::String(id) == "shift") shiftAttachment = std::move(attachment);
+    else if(juce::String(id) == "tension") tensionAttachment = std::move(attachment);
+    else if(juce::String(id) == "floor") floorAttachment = std::move(attachment);
     else if(juce::String(id) == "detectorHpf") detectorHpfAttachment = std::move(attachment);
     else if(juce::String(id) == "detectorLpf") detectorLpfAttachment = std::move(attachment);
     else thresholdAttachment = std::move(attachment);
@@ -582,13 +596,14 @@ void DuckerEditor::resized() {
         return juce::Rectangle<float>(x * s, y * s, w * s, h * s).toNearestInt();
     };
 
-    // Left column: DJ Duck is at y=56..240, Mix knob at y=244..424, Band & FX toggle section at y=430..498
+    // Left column: DJ Duck is at y=56..240, Mix knob at y=244..424, Band & FX toggle section at y=430..538
     mix.setBounds(area(70, 244, 204, 180));
     bandButton.setBounds(area(22, 430, 80, 40));
     solo.setBounds(area(106, 430, 40, 40));
     pushItButton.setBounds(area(150, 430, 90, 40));
     effectsToggle.setBounds(area(244, 430, 86, 40));
-    band.setBounds(area(22, 472, 306, 26));
+    band.setBounds(area(22, 474, 204, 24));
+    bandSlope.setBounds(area(232, 498, 98, 40));
 
     // Right column
     for(size_t i = 0; i < rateButtons.size(); ++i) rateButtons[i].setBounds(area(354 + static_cast<float>(i) * 64, 8, 60, 40));
@@ -598,12 +613,14 @@ void DuckerEditor::resized() {
 
     display.setBounds(area(354, 54, 630, 290));
 
-    previousBank.setBounds(area(354, 352, 70, 40));
-    previous.setBounds(area(430, 352, 70, 40));
-    shift.setBounds(area(508, 352, 156, 40));
-    threshold.setBounds(area(672, 352, 156, 40));
-    next.setBounds(area(836, 352, 70, 40));
-    nextBank.setBounds(area(914, 352, 70, 40));
+    previousBank.setBounds(area(354, 352, 42, 40));
+    previous.setBounds(area(400, 352, 42, 40));
+    shift.setBounds(area(446, 352, 88, 40));
+    tension.setBounds(area(538, 352, 98, 40));
+    floor.setBounds(area(640, 352, 84, 40));
+    threshold.setBounds(area(728, 352, 164, 40));
+    next.setBounds(area(896, 352, 42, 40));
+    nextBank.setBounds(area(942, 352, 42, 40));
 
     for(size_t i = 0; i < curveButtons.size(); ++i)
         curveButtons[i]->setBounds(area(354 + static_cast<float>(i % 8) * 79, i < 8 ? 398 : 450, 74, 44));
@@ -682,8 +699,11 @@ void DuckerEditor::paint(juce::Graphics& g) {
     const float s = static_cast<float>(getWidth()) / 1000.0f;
 
     // Header branding
-    drawText(g, "open", {24 * s, 10 * s, 65 * s, 26 * s}, 24 * s, look::paper, juce::Justification::centredLeft, true);
-    drawText(g, "Ducker 2", {86 * s, 10 * s, 160 * s, 26 * s}, 24 * s, look::yellow, juce::Justification::centredLeft, true);
+    g.setFont(juce::FontOptions(24 * s, juce::Font::bold));
+    const float openWidth = static_cast<float>(juce::GlyphArrangement::getStringWidthInt(g.getCurrentFont(), "open"));
+    drawText(g, "open", {24 * s, 10 * s, openWidth + 4 * s, 26 * s}, 24 * s, look::paper, juce::Justification::centredLeft, true);
+    drawText(g, "Ducker", {24 * s + openWidth + 1 * s, 10 * s, 100 * s, 26 * s}, 24 * s, look::yellow, juce::Justification::centredLeft, true);
+    drawText(g, "v" JucePlugin_VersionString, {24 * s + openWidth + 92 * s, 14 * s, 50 * s, 20 * s}, 11.5f * s, look::muted, juce::Justification::centredLeft, true);
     drawText(g, "Find your bounce.", {25 * s, 35 * s, 180 * s, 16 * s}, 12 * s, look::muted, juce::Justification::centredLeft, false);
 
     // Host / Trigger Sync Status Pill

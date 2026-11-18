@@ -8,9 +8,16 @@ double fraction(double x) noexcept { return x - std::floor(x); }
 bool usableBpm(double bpm) noexcept { return std::isfinite(bpm) && bpm > 0 && bpm <= 10000; }
 }
 
-double cycleGain(int curve, double phase, double length) noexcept {
+double cycleGain(int curve, double phase, double length, double tension, double floor) noexcept {
     length = std::clamp(length, 0.05, 1.0);
-    return curveValue(curve, std::clamp(phase, 0.0, 1.0) / length);
+    double x = std::clamp(phase, 0.0, 1.0) / length;
+    if (x < 1.0 && std::abs(tension) > 1e-4) {
+        const double expFactor = std::pow(2.5, -std::clamp(tension, -1.0, 1.0));
+        x = std::pow(x, expFactor);
+    }
+    const double raw = curveValue(curve, x);
+    floor = std::clamp(floor, 0.0, 1.0);
+    return floor + (1.0 - floor) * raw;
 }
 
 void Engine::prepare(double rate) noexcept {
@@ -28,6 +35,8 @@ void Engine::beginBlock(Transport t, Parameters p) noexcept {
     p.smoothing = std::clamp(p.smoothing, 0, static_cast<int>(smoothingMilliseconds.size()) - 1);
     p.length = std::isfinite(p.length) ? std::clamp(p.length, 0.05, 1.0) : 1.0;
     p.shift = std::isfinite(p.shift) ? std::clamp(p.shift, 0.0, 1.0) : 0.0;
+    p.tension = std::isfinite(p.tension) ? std::clamp(p.tension, -1.0, 1.0) : 0.0;
+    p.floor = std::isfinite(p.floor) ? std::clamp(p.floor, 0.0, 1.0) : 0.0;
     parameters = p;
     const double milliseconds = smoothingMilliseconds[static_cast<size_t>(p.smoothing)];
     smoothingCoefficient = milliseconds > 0 ? std::exp(-1.0 / (milliseconds * 0.001 * sampleRate)) : 0.0;
@@ -60,7 +69,7 @@ double Engine::nextGain() noexcept {
         freePhase = fraction(currentCyclePhase);
         lastPhase = fraction(freePhase - parameters.shift);
         if(lastPhase < 0.0) lastPhase += 1.0;
-        target = cycleGain(parameters.curve, lastPhase, parameters.length);
+        target = cycleGain(parameters.curve, lastPhase, parameters.length, parameters.tension, parameters.floor);
         ++offset;
         gain = target + (gain - target) * smoothingCoefficient;
         return std::clamp(gain, 0.0, 1.0);
@@ -71,7 +80,7 @@ double Engine::nextGain() noexcept {
         elapsed += 1;
         if(phase >= 1) isRunning = false;
         lastPhase = std::clamp(phase, 0.0, 1.0);
-        if(isRunning && phase >= 0) target = cycleGain(parameters.curve, phase, parameters.length);
+        if(isRunning && phase >= 0) target = cycleGain(parameters.curve, phase, parameters.length, parameters.tension, parameters.floor);
     }
     ++offset;
     gain = target + (gain - target) * smoothingCoefficient;

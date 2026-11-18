@@ -6,8 +6,9 @@
 namespace {
 double trimGain(float db) { return std::pow(10.0, std::round(static_cast<double>(db) * 100) / 2000); }
 constexpr std::array<double, 8> delayBeats {0.125, 0.25, 0.5, 0.75, 1, 1.5, 2, 4};
-constexpr std::array<const char*, 16> ids {"mix", "curve", "rate", "length", "shift", "trigger", "retrigger", "threshold",
-    "smoothing", "bandOn", "bandFrequency", "bandSolo", "bypass", "detectorHpf", "detectorLpf", "detectorMonitor"};
+constexpr std::array<const char*, 19> ids {"mix", "curve", "rate", "length", "shift", "trigger", "retrigger", "threshold",
+    "smoothing", "bandOn", "bandFrequency", "bandSolo", "bypass", "detectorHpf", "detectorLpf", "detectorMonitor",
+    "tension", "floor", "bandSlope"};
 constexpr std::array<const char*, 21> fxIds {"fxEnabled", "duckTarget", "duckPosition", "fxMix", "delayEnabled", "delayLength",
     "delayFeedback", "delayBass", "delayTreble", "delayMode", "reverbEnabled", "reverbType",
     "reverbLength", "reverbWidth", "reverbBass", "reverbTreble", "sustain", "destroy", "output", "fxFlow", "destroyMode"};
@@ -65,6 +66,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout DuckerProcessor::layout() {
     number("output", "Output", {-24, 12, 0.01f}, 0, "dB", 2);
     choice("fxFlow", "FX flow", {"Serial", "Parallel"}, 1, 2);
     choice("destroyMode", "Destroy mode", {"Tail", "Always"}, 1, 2);
+    number("tension", "Curve tension", {-100, 100, 0.5f}, 0, "%", 3);
+    number("floor", "Duck floor", {0, 100, 0.5f}, 0, "%", 3);
+    choice("bandSlope", "Band slope", {"12 dB/oct", "24 dB/oct", "48 dB/oct"}, 1, 3);
     return result;
 }
 
@@ -155,8 +159,9 @@ template<typename Sample> void DuckerProcessor::process(juce::AudioBuffer<Sample
     }
     const auto trigger = static_cast<duck::Trigger>(juce::jlimit(0, 2, static_cast<int>(value(TriggerMode))));
     engine.beginBlock(t, {static_cast<int>(value(Curve)), static_cast<int>(value(Rate)), static_cast<int>(value(Smoothing)),
-        value(Length) * 0.01, value(Shift) * 0.01, trigger, value(Retrigger) > 0.5f});
+        value(Length) * 0.01, value(Shift) * 0.01, trigger, value(Retrigger) > 0.5f, value(Tension) * 0.01, value(Floor) * 0.01});
     detector.setThresholdDb(value(Threshold));
+    crossover.setSlope(static_cast<int>(value(BandSlope)));
     if(std::abs(value(BandFrequency) - bandFrequency) > 0.001) { bandFrequency = value(BandFrequency); crossover.setFrequency(bandFrequency); }
     const bool inactive = bypassed || value(Bypass) > 0.5f;
     const bool band = value(BandOn) > 0.5f;
@@ -321,6 +326,12 @@ void DuckerProcessor::setStateInformation(const void* data, int size) {
             auto* parameter = parameters.getParameter(id);
             juce::ValueTree child {"PARAM"}; child.setProperty("id", id, nullptr);
             child.setProperty("value", juce::String(id) == "fxFlow" || juce::String(id) == "destroyMode" ? 0.0f : parameter->convertFrom0to1(parameter->getDefaultValue()), nullptr);
+            state.addChild(child, -1, nullptr);
+        }
+        for(const auto* id : {"tension", "floor", "bandSlope"}) if(!state.getChildWithProperty("id", id).isValid()) {
+            auto* parameter = parameters.getParameter(id);
+            juce::ValueTree child {"PARAM"}; child.setProperty("id", id, nullptr);
+            child.setProperty("value", parameter->convertFrom0to1(parameter->getDefaultValue()), nullptr);
             state.addChild(child, -1, nullptr);
         }
         parameters.replaceState(state);
