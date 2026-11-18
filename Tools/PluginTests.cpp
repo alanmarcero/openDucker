@@ -512,8 +512,14 @@ void testControls(DuckerProcessor& p, juce::AudioProcessorEditor& editor) {
     require(get(p, "bandSolo") == 1, "Band solo disconnected");
     control<juce::Slider>(editor, "bandFrequency").setValue(300, juce::sendNotificationSync);
     require(std::abs(get(p, "bandFrequency") - 300) < 1, "Band slider disconnected");
+    control<juce::ComboBox>(editor, "bandSlope").setSelectedId(3, juce::sendNotificationSync);
+    require(std::abs(get(p, "bandSlope") - 2) < 0.01f, "Band slope selector disconnected");
     control<juce::Slider>(editor, "shift").setValue(25, juce::sendNotificationSync);
     require(std::abs(get(p, "shift") - 25) < 0.1, "Shift slider disconnected");
+    control<juce::Slider>(editor, "tension").setValue(40, juce::sendNotificationSync);
+    require(std::abs(get(p, "tension") - 40) < 0.5, "Tension slider disconnected");
+    control<juce::Slider>(editor, "floor").setValue(20, juce::sendNotificationSync);
+    require(std::abs(get(p, "floor") - 20) < 0.5, "Floor slider disconnected");
     control<juce::Slider>(editor, "threshold").setValue(-12, juce::sendNotificationSync);
     require(std::abs(get(p, "threshold") + 12) < 0.1, "Threshold slider disconnected");
     control<juce::Slider>(editor, "detectorHpf").setValue(1200, juce::sendNotificationSync);
@@ -535,7 +541,7 @@ void testControls(DuckerProcessor& p, juce::AudioProcessorEditor& editor) {
     require(std::abs(get(p, "length") - 50) < 1, "Dragging the handle does not set the slope length");
     display.mouseDoubleClick(event({width * 0.5f, 100}, false));
     require(get(p, "length") == 100, "Double-clicking the handle does not reset the slope length");
-    set(p, "bandOn", 0); set(p, "bandSolo", 0); set(p, "shift", 0); set(p, "retrigger", 1);
+    set(p, "bandOn", 0); set(p, "bandSolo", 0); set(p, "shift", 0); set(p, "tension", 0); set(p, "floor", 0); set(p, "bandSlope", 1); set(p, "retrigger", 1);
 }
 }
 

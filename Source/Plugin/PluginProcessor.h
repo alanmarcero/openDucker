@@ -52,7 +52,7 @@ private:
     uint32_t demoSeed = 0x9e3779b9;
     float demoFilterL = 0, demoFilterR = 0;
     enum Id { Mix, Curve, Rate, Length, Shift, TriggerMode, Retrigger, Threshold, Smoothing, BandOn, BandFrequency, BandSolo, Bypass,
-        DetectorHpf, DetectorLpf, DetectorMonitor, IdCount };
+        DetectorHpf, DetectorLpf, DetectorMonitor, Tension, Floor, BandSlope, IdCount };
     enum FxParameter { FxEnabled, DuckTarget, DuckPosition, FxMix, DelayEnabled, DelayLength,
         DelayFeedback, DelayBass, DelayTreble, DelayMode, ReverbEnabled, ReverbType,
         ReverbLength, ReverbWidth, ReverbBass, ReverbTreble, Sustain, Destroy, Output, FxFlow, DestroyMode, FxCount };

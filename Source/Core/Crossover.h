@@ -11,6 +11,7 @@ struct Bands { double low = 0, high = 0; };
 class Crossover {
 public:
     void prepare(double rate) noexcept { sampleRate = rate; states = {}; setFrequency(frequency); }
+    void setSlope(int slopeIndex) noexcept { slopeMode = std::clamp(slopeIndex, 0, 2); }
     void setFrequency(double hertz) noexcept {
         frequency = std::clamp(hertz, 20.0, sampleRate * 0.45);
         const double omega = 6.283185307179586 * frequency / sampleRate;
@@ -22,7 +23,15 @@ public:
     }
     Bands split(size_t channel, double input) noexcept {
         auto& state = states[std::min<size_t>(channel, 1)];
-        return {run(low, state[0], run(low, state[1], input)), run(high, state[2], run(high, state[3], input))};
+        if (slopeMode == 0) {
+            return {run(low, state[0], input), run(high, state[2], input)};
+        }
+        const double l24 = run(low, state[0], run(low, state[1], input));
+        const double h24 = run(high, state[2], run(high, state[3], input));
+        if (slopeMode == 1) {
+            return {l24, h24};
+        }
+        return {run(low, state[4], run(low, state[5], l24)), run(high, state[6], run(high, state[7], h24))};
     }
 private:
     struct Coefficients { double b0 = 0, b1 = 0, b2 = 0; };
@@ -34,7 +43,8 @@ private:
         return y;
     }
     double sampleRate = 48000, frequency = 150, a1 = 0, a2 = 0;
+    int slopeMode = 1;
     Coefficients low, high;
-    std::array<std::array<Stage, 4>, 2> states {};
+    std::array<std::array<Stage, 8>, 2> states {};
 };
 }

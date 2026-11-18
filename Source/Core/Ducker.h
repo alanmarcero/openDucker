@@ -16,11 +16,12 @@ struct Parameters {
     double length = 1, shift = 0; // fractions of the cycle
     Trigger trigger = Trigger::Sync;
     bool retrigger = true;
+    double tension = 0, floor = 0;
 };
 
 /// Gain of the selected curve at a cycle phase. The curve spans `length` of the cycle,
 /// then holds its final value until the cycle restarts.
-double cycleGain(int curve, double phase, double length) noexcept;
+double cycleGain(int curve, double phase, double length, double tension = 0.0, double floor = 0.0) noexcept;
 
 class Engine {
 public:
