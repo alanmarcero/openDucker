@@ -43,9 +43,11 @@ void testSync() {
     p.rate = 3;
     engine.beginBlock(playing(1), p);
     require(std::abs(engine.nextGain() - duck::cycleGain(2, 0.25, 1)) < 1e-12, "Rate does not change the cycle length");
+    require(std::abs(engine.beatPhase() - 0.25) < 1e-12, "Beat phase does not follow the host cycle length");
     p.rate = 1; p.shift = 0.5;
     engine.beginBlock(playing(0.5), p);
     require(engine.nextGain() < 1e-9, "Shift does not move the curve within the cycle");
+    require(std::abs(engine.beatPhase() - 0.5) < 1e-12, "Shift moves the host cycle position");
     p.shift = 0;
     duck::Transport stopped = playing(0.1); stopped.playing = false;
     engine.beginBlock(stopped, p);

@@ -4,8 +4,9 @@
 
 namespace {
 constexpr float pi = juce::MathConstants<float>::pi;
-constexpr int collapsedHeight = 552;
-constexpr int expandedHeight = 760;
+constexpr int contentShift = 44;
+constexpr int collapsedHeight = 552 + contentShift;
+constexpr int expandedHeight = 760 + contentShift;
 
 void drawText(juce::Graphics& g, const juce::String& value, juce::Rectangle<float> bounds, float size, juce::Colour colour,
     juce::Justification alignment = juce::Justification::centred, bool bold = true) {
@@ -273,13 +274,21 @@ void CurveButton::paintButton(juce::Graphics& g, bool over, bool down) {
 CurveDisplay::CurveDisplay(DuckerProcessor& p) : owner(p) {
     setComponentID("display");
     setName("Ducking curve");
-    setTooltip("Input (grey) and output (yellow) waveforms over one cycle. Drag the handle to adjust slope length; double-click to reset.");
+    setTooltip("Incoming audio sits behind the duck curve, locked to the host cycle. Sidechain is used when connected, otherwise the main input. Drag the handle to adjust slope length; double-click to reset.");
 }
 
 float CurveDisplay::lengthFraction() const { return owner.parameters.getRawParameterValue("length")->load() * 0.01f; }
+float CurveDisplay::shiftFraction() const { return owner.parameters.getRawParameterValue("shift")->load() * 0.01f; }
+
+float CurveDisplay::handleX() const {
+    const float shift = shiftFraction();
+    float end = shift + lengthFraction();
+    if(end > 1.0f) end -= std::floor(end);
+    return end * static_cast<float>(getWidth());
+}
 
 bool CurveDisplay::overHandle(juce::Point<float> point) const {
-    const float edge = lengthFraction() * static_cast<float>(getWidth());
+    const float edge = handleX();
     return std::abs(point.x - edge) < 8.0f || juce::Rectangle<float>(edge - 36, 6, 36, 30).contains(point);
 }
 
@@ -295,8 +304,14 @@ void CurveDisplay::mouseDown(const juce::MouseEvent& e) {
     dragging = overHandle(e.position);
     if(dragging) owner.parameters.getParameter("length")->beginChangeGesture();
 }
+void CurveDisplay::setLengthFromPointer(float x) {
+    const float beat = juce::jlimit(0.0f, 1.0f, x / static_cast<float>(std::max(1, getWidth())));
+    float length = beat - shiftFraction();
+    if(length < 0.0f) length += 1.0f;
+    setLength(length);
+}
 void CurveDisplay::mouseDrag(const juce::MouseEvent& e) {
-    if(dragging) setLength(e.position.x / static_cast<float>(getWidth()));
+    if(dragging) setLengthFromPointer(e.position.x);
 }
 void CurveDisplay::mouseUp(const juce::MouseEvent&) {
     if(!dragging) return;
@@ -328,40 +343,58 @@ void CurveDisplay::paint(juce::Graphics& g) {
     const float middle = height * 0.5f;
     g.drawHorizontalLine(juce::roundToInt(middle), 4, width - 4);
 
-    // Waveform bars
-    const float binWidth = width / static_cast<float>(DuckerProcessor::displayBins);
-    for(int bin = 0; bin < DuckerProcessor::displayBins; ++bin) {
-        const float x = static_cast<float>(bin) * binWidth;
-        const float input = juce::jlimit(0.0f, 1.0f, owner.inputBins[static_cast<size_t>(bin)].load(std::memory_order_relaxed));
+    // Beat-locked incoming audio behind the curve. Sidechain when connected, otherwise the main input.
+    const int bins = DuckerProcessor::displayBins;
+    const auto levelAt = [&](int bin) {
+        return juce::jlimit(0.0f, 1.0f, owner.sourceBins[static_cast<size_t>(bin)].load(std::memory_order_relaxed));
+    };
+    juce::Path wave;
+    wave.startNewSubPath(0.0f, middle);
+    for(int bin = 0; bin < bins; ++bin) {
+        const float x = (static_cast<float>(bin) + 0.5f) / static_cast<float>(bins) * width;
+        wave.lineTo(x, middle - levelAt(bin) * height * 0.46f);
+    }
+    for(int bin = bins - 1; bin >= 0; --bin) {
+        const float x = (static_cast<float>(bin) + 0.5f) / static_cast<float>(bins) * width;
+        wave.lineTo(x, middle + levelAt(bin) * height * 0.46f);
+    }
+    wave.closeSubPath();
+    g.setColour(look::mint.withAlpha(0.34f));
+    g.fillPath(wave);
+
+    const float binWidth = width / static_cast<float>(bins);
+    for(int bin = 0; bin < bins; ++bin) {
         const float output = juce::jlimit(0.0f, 1.0f, owner.outputBins[static_cast<size_t>(bin)].load(std::memory_order_relaxed));
-
-        // Input waveform in muted slate
-        g.setColour(look::muted.withAlpha(0.45f));
-        g.fillRect(x, middle - input * height * 0.42f, std::max(1.0f, binWidth - 0.5f), std::max(1.0f, input * height * 0.84f));
-
-        // Output waveform in warm yellow/amber
-        g.setColour(look::yellow.withAlpha(0.65f));
-        g.fillRect(x, middle - output * height * 0.42f, std::max(1.0f, binWidth * 0.55f), std::max(1.0f, output * height * 0.84f));
+        g.setColour(look::yellow.withAlpha(0.28f));
+        g.fillRect(static_cast<float>(bin) * binWidth, middle - output * height * 0.42f, std::max(1.0f, binWidth * 0.45f), std::max(1.0f, output * height * 0.84f));
     }
 
-    // Inactive shaded region past slope length
-    const float edge = lengthFraction() * width;
+    // Inactive shaded region past the slope, in host-cycle space.
+    const float shift = shiftFraction();
+    const float length = lengthFraction();
     g.setColour(juce::Colour {0x88000000});
-    g.fillRect(edge, 0.0f, width - edge, height);
+    for(int px = 0; px < juce::roundToInt(width); ++px) {
+        float phase = (static_cast<float>(px) + 0.5f) / width - shift;
+        phase -= std::floor(phase);
+        if(phase >= length) g.fillRect(static_cast<float>(px), 0.0f, 1.0f, height);
+    }
 
-    // Ducking curve
+    // Ducking curve, shifted against the beat-locked waveform.
     const auto curveArea = juce::Rectangle<float>(0, height * 0.06f, width, height * 0.88f);
     const int curve = static_cast<int>(owner.parameters.getRawParameterValue("curve")->load());
     const double tensionVal = owner.parameters.getRawParameterValue("tension")->load() * 0.01;
     const double floorVal = owner.parameters.getRawParameterValue("floor")->load() * 0.01;
+    const auto phaseAt = [&](float x) {
+        double phase = static_cast<double>(x / width) - static_cast<double>(shift);
+        phase -= std::floor(phase);
+        return phase;
+    };
     juce::Path path;
-    const float length = lengthFraction();
     for(int px = 0; px <= juce::roundToInt(width); ++px) {
         const float x = static_cast<float>(px);
-        const float y = curveArea.getBottom() - static_cast<float>(duck::cycleGain(curve, x / width, length, tensionVal, floorVal)) * curveArea.getHeight();
+        const float y = curveArea.getBottom() - static_cast<float>(duck::cycleGain(curve, phaseAt(x), length, tensionVal, floorVal)) * curveArea.getHeight();
         if(px == 0) path.startNewSubPath(x, y); else path.lineTo(x, y);
     }
-    path.lineTo(width - 1, curveArea.getBottom() - static_cast<float>(duck::cycleGain(curve, 0, length, tensionVal, floorVal)) * curveArea.getHeight());
 
     // Glowing stroke
     glow(g, bounds, look::yellow.withAlpha(0.06f));
@@ -369,14 +402,20 @@ void CurveDisplay::paint(juce::Graphics& g) {
     g.strokePath(path, juce::PathStrokeType(3.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
     // Live playhead cursor
+    g.setColour(look::muted.withAlpha(0.85f));
+    g.setFont(juce::FontOptions(11.0f));
+    g.drawText(owner.sourceIsSidechain.load(std::memory_order_relaxed) ? "Sidechain" : "Input",
+        juce::Rectangle<float>(8.0f, height - 18.0f, 90.0f, 14.0f), juce::Justification::centredLeft);
+
     if(owner.visualRunning.load(std::memory_order_relaxed)) {
-        const float playheadX = owner.visualPhase.load(std::memory_order_relaxed) * width;
+        const float playheadX = owner.visualBeat.load(std::memory_order_relaxed) * width;
         g.setColour(look::mint);
         g.fillRect(playheadX, 0.0f, 2.0f, height);
     }
 
     // Draggable slope handle
-    const auto handle = juce::Rectangle<float>(32, 28).withRightX(std::min(width - 2, edge - 2)).withY(6);
+    const float edge = handleX();
+    const auto handle = juce::Rectangle<float>(32, 28).withRightX(std::min(width - 2, std::max(34.0f, edge - 2))).withY(6);
     g.setColour(look::panel.brighter(0.15f));
     g.fillRoundedRectangle(handle, 4);
     g.setColour(look::muted.withAlpha(0.4f));
@@ -386,13 +425,16 @@ void CurveDisplay::paint(juce::Graphics& g) {
         g.fillRect(handle.getCentreX() + static_cast<float>(line) * 5.0f - 1, handle.getY() + 6, 2.0f, 16.0f);
 }
 
-DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(p), display(p), effectsPanel(p) {
+DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(p), display(p), effectsPanel(p),
+    suiteBar(p, {look::panel, look::paper, look::muted, look::yellow, look::mint, look::background}) {
     setLookAndFeel(&theme);
     boothSpeaker = juce::Drawable::createFromImageData(BinaryData::boothspeaker_svg, BinaryData::boothspeaker_svgSize);
     auto heroDuck = juce::ImageCache::getFromMemory(BinaryData::cyberduckhero_png, BinaryData::cyberduckhero_pngSize);
     mascot = !heroDuck.isNull() ? heroDuck : juce::ImageCache::getFromMemory(BinaryData::djduck_png, BinaryData::djduck_pngSize);
     faceplate = juce::ImageCache::getFromMemory(BinaryData::analogcyberfaceplate_png, BinaryData::analogcyberfaceplate_pngSize);
 
+    setWantsKeyboardFocus(true);
+    addAndMakeVisible(suiteBar);
     addAndMakeVisible(display);
     addAndMakeVisible(effectsPanel);
     addAndMakeVisible(effectsToggle);
@@ -580,24 +622,26 @@ void DuckerEditor::showMenu() {
             parameter->beginChangeGesture(); parameter->setValueNotifyingHost(parameter->getDefaultValue()); parameter->endChangeGesture();
         }
         if(result == 21) juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::InfoIcon, "openDucker 2",
-            "openDucker 2\nFind your bounce with DJ Duck.\nAGPL-3.0, github.com/alanmarcero/openDucker");
+            "openDucker 2\nFind your bounce with DJ Duck.\nMIT license, github.com/alanmarcero/openDucker");
     });
 }
 
 void DuckerEditor::timerCallback() {
     display.repaint();
+    suiteBar.refresh();
     if(effectsPanel.isVisible()) {
         const float s = static_cast<float>(getWidth()) / 1000.0f;
         effectsPanel.repaint(juce::Rectangle<float>(660.0f * s, 4.0f * s, 306.0f * s, 74.0f * s).toNearestInt());
     }
-    repaint(0, 0, getWidth() * 35 / 100, juce::roundToInt(280.0f * static_cast<float>(getWidth()) / 1000.0f));
+    repaint(0, 0, getWidth() * 35 / 100, juce::roundToInt((280.0f + contentShift) * static_cast<float>(getWidth()) / 1000.0f));
 }
 
 void DuckerEditor::resized() {
     const float s = static_cast<float>(getWidth()) / 1000.0f;
     const auto area = [s](float x, float y, float w, float h) {
-        return juce::Rectangle<float>(x * s, y * s, w * s, h * s).toNearestInt();
+        return juce::Rectangle<float>(x * s, (y + contentShift) * s, w * s, h * s).toNearestInt();
     };
+    suiteBar.setBounds(juce::Rectangle<float>(12 * s, 4 * s, 976 * s, 40 * s).toNearestInt());
 
     // Left column: DJ Duck is at y=56..240, Mix knob at y=244..424, Band & FX toggle section at y=430..538
     mix.setBounds(area(70, 244, 204, 180));
@@ -700,14 +744,15 @@ void DuckerEditor::paint(juce::Graphics& g) {
     }
 
     const float s = static_cast<float>(getWidth()) / 1000.0f;
+    const float dy = contentShift * s;
 
     // Header branding
     g.setFont(juce::FontOptions(24 * s, juce::Font::bold));
     const float openWidth = static_cast<float>(juce::GlyphArrangement::getStringWidthInt(g.getCurrentFont(), "open"));
-    drawText(g, "open", {24 * s, 10 * s, openWidth + 4 * s, 26 * s}, 24 * s, look::paper, juce::Justification::centredLeft, true);
-    drawText(g, "Ducker", {24 * s + openWidth + 1 * s, 10 * s, 100 * s, 26 * s}, 24 * s, look::yellow, juce::Justification::centredLeft, true);
-    drawText(g, "v" JucePlugin_VersionString, {24 * s + openWidth + 92 * s, 14 * s, 50 * s, 20 * s}, 11.5f * s, look::muted, juce::Justification::centredLeft, true);
-    drawText(g, "Find your bounce.", {25 * s, 35 * s, 180 * s, 16 * s}, 12 * s, look::muted, juce::Justification::centredLeft, false);
+    drawText(g, "open", {24 * s, 10 * s + dy, openWidth + 4 * s, 26 * s}, 24 * s, look::paper, juce::Justification::centredLeft, true);
+    drawText(g, "Ducker", {24 * s + openWidth + 1 * s, 10 * s + dy, 100 * s, 26 * s}, 24 * s, look::yellow, juce::Justification::centredLeft, true);
+    drawText(g, "v" JucePlugin_VersionString, {24 * s + openWidth + 92 * s, 14 * s + dy, 50 * s, 20 * s}, 11.5f * s, look::muted, juce::Justification::centredLeft, true);
+    drawText(g, "Find your bounce.", {25 * s, 35 * s + dy, 180 * s, 16 * s}, 12 * s, look::muted, juce::Justification::centredLeft, false);
 
     // Host / Trigger Sync Status Pill
     const int state = owner.syncState.load(std::memory_order_relaxed);
@@ -716,7 +761,7 @@ void DuckerEditor::paint(juce::Graphics& g) {
     const juce::String status = mode == 1 ? "MIDI Trigger" : (mode == 2 ? "Audio Trigger"
         : (state == 2 ? juce::String(owner.hostBpm.load(std::memory_order_relaxed), 1) + " BPM" : (state == 1 ? "Host Stopped" : "No Sync")));
 
-    const auto statusPill = juce::Rectangle<float>(216 * s, 16 * s, 116 * s, 22 * s);
+    const auto statusPill = juce::Rectangle<float>(216 * s, 16 * s + dy, 116 * s, 22 * s);
     g.setColour(look::panel.darker(0.2f));
     g.fillRoundedRectangle(statusPill, statusPill.getHeight() * 0.5f);
     g.setColour(look::muted.withAlpha(0.2f));
@@ -730,10 +775,27 @@ void DuckerEditor::paint(juce::Graphics& g) {
     drawText(g, status, {statusPill.getX() + 18 * s, statusPill.getY(), statusPill.getWidth() - 22 * s, statusPill.getHeight()}, 11 * s, look::paper, juce::Justification::centred, false);
 
     // DJ Duck Booth Stage
-    paintDuckBooth(g, {22 * s, 54 * s, 310 * s, 182 * s}, s);
+    paintDuckBooth(g, {22 * s, 54 * s + dy, 310 * s, 182 * s}, s);
 
     // Subtle divider between left column and right tools
     g.setColour(look::muted.withAlpha(0.18f));
-    g.drawVerticalLine(juce::roundToInt(342 * s), 16 * s, 498 * s);
-    if(effectsExpanded) g.drawHorizontalLine(juce::roundToInt(546 * s), 22 * s, 984 * s);
+    g.drawVerticalLine(juce::roundToInt(342 * s), 16 * s + dy, 498 * s + dy);
+    if(effectsExpanded) g.drawHorizontalLine(juce::roundToInt(546 * s + dy), 22 * s, 984 * s);
+}
+
+bool DuckerEditor::keyPressed(const juce::KeyPress& key) {
+    const bool command = key.getModifiers().isCommandDown();
+    const auto code = juce::CharacterFunctions::toUpperCase(static_cast<juce::juce_wchar>(key.getKeyCode()));
+    if(command && code == 'Z') {
+        if(key.getModifiers().isShiftDown()) owner.redoEdit();
+        else owner.undoEdit();
+        suiteBar.refresh();
+        return true;
+    }
+    if(command && (code == 'Y')) {
+        owner.redoEdit();
+        suiteBar.refresh();
+        return true;
+    }
+    return false;
 }

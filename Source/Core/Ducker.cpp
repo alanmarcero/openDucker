@@ -57,6 +57,14 @@ void Engine::trigger() noexcept {
 }
 
 double Engine::nextGain() noexcept {
+    const int rate = std::clamp(parameters.rate, 0, static_cast<int>(cycleBeats.size()) - 1);
+    const double cycleLen = cycleBeats[static_cast<size_t>(rate)];
+    double currentBeat = freeBeat + (cycleLen > 0 ? step / cycleLen : 0);
+    if(syncActive) currentBeat = (blockPpq + static_cast<double>(offset) * step) / cycleLen;
+    if(!std::isfinite(currentBeat)) currentBeat = 0;
+    freeBeat = fraction(currentBeat);
+    unshiftedBeat = freeBeat;
+
     double target = 1.0;
     if(parameters.trigger == Trigger::Sync) {
         isRunning = true;
