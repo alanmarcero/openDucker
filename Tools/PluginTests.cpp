@@ -750,6 +750,23 @@ int main(int argc, char** argv) {
         testEffectsControls(p, *editor);
         testEqDetents(p, *editor);
         testSuite(p, *editor);
+        {
+            // README and OpenVST Manager show this capture: the editor at the size it opens,
+            // on the first factory patch, not the Sync demo configured below.
+            Host previewHost;
+            previewHost.position.setIsPlaying(true);
+            previewHost.position.setBpm(128);
+            previewHost.position.setPpqPosition(0);
+            DuckerProcessor previewProcessor;
+            previewProcessor.setPlayHead(&previewHost);
+            previewProcessor.prepareToPlay(sampleRate, 512);
+            require(previewProcessor.getCurrentProgram() == 0 && previewProcessor.getProgramName(0) == "Classic Pump", "Factory default patch is not Classic Pump");
+            require(std::abs(get(previewProcessor, "mix") - 100.0f) < 0.2f && get(previewProcessor, "fxEnabled") < 0.5f, "Factory default patch was modified");
+            std::unique_ptr<juce::AudioProcessorEditor> previewEditor(previewProcessor.createEditor());
+            previewProcessor.reset();
+            render<float>(previewProcessor, previewHost, 0, static_cast<long>(beatSamples) * 2, false);
+            save(*previewEditor, output, "preview.png");
+        }
         for(auto* parameter : p.getParameters()) parameter->setValueNotifyingHost(parameter->getDefaultValue());
         for(const auto& [id, value] : std::initializer_list<std::pair<const char*, float>> {{"rate", 1}, {"trigger", 0}, {"curve", 2}, {"mix", 79},
             {"shift", 0}, {"threshold", -24}, {"retrigger", 1}, {"bandFrequency", 150}, {"smoothing", 1}, {"length", 100}, {"fxEnabled", 1}}) set(p, id, value);
