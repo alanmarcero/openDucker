@@ -12,6 +12,11 @@ permissions:
   contents: read
 jobs:
   build:
+    # build.yml's update-preview job declares contents: write. GitHub checks
+    # that permission when the workflow is called, including jobs whose if
+    # skips them, and startup_failure is the result if the caller grants less.
+    permissions:
+      contents: write
     uses: ./.github/workflows/build.yml
     with:
       source_ref: refs/tags/${{ inputs.release_tag || github.ref_name }}
