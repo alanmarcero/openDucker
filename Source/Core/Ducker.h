@@ -30,8 +30,10 @@ public:
     /// Restart the curve from an audio or MIDI event. Ignored in Sync mode.
     void trigger() noexcept;
     double nextGain() noexcept;
-    /// Position inside the cycle (0..1) of the most recent sample.
+    /// Position inside the cycle (0..1) of the most recent sample, after shift.
     double phase() const noexcept { return lastPhase; }
+    /// Host-cycle position (0..1) of the most recent sample, before shift.
+    double beatPhase() const noexcept { return unshiftedBeat; }
     /// True while the curve is advancing (host playing in Sync mode, or after a trigger).
     bool running() const noexcept { return isRunning; }
     bool synced() const noexcept { return syncActive; }
@@ -42,6 +44,6 @@ private:
     Parameters parameters;
     bool syncActive = false, isRunning = false;
     int offset = 0;
-    double freePhase = 0;
+    double freePhase = 0, freeBeat = 0, unshiftedBeat = 0;
 };
 }

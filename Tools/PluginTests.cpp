@@ -473,9 +473,9 @@ void testEffectsControls(DuckerProcessor& p, juce::AudioProcessorEditor& editor)
         button->setToggleState(true, juce::sendNotificationSync); require(p.parameters.getRawParameterValue(id)->load() > 0.5f, "Effect cannot turn on");
     }
     auto* toggle = dynamic_cast<juce::TextButton*>(find(editor, "effectsToggle")); require(toggle != nullptr, "Effects collapse missing");
-    toggle->onClick(); require(editor.getHeight() == 552 && !find(editor, "reverbType")->isShowing(), "Effects panel does not collapse");
+    toggle->onClick(); require(editor.getHeight() == 596 && !find(editor, "reverbType")->isShowing(), "Effects panel does not collapse");
     require(p.parameters.getRawParameterValue("fxEnabled")->load() > 0.5f, "Collapsing panel disables audio");
-    toggle->onClick(); require(editor.getHeight() == 760, "Effects panel does not expand");
+    toggle->onClick(); require(editor.getHeight() == 804, "Effects panel does not expand");
 }
 void testControls(DuckerProcessor& p, juce::AudioProcessorEditor& editor) {
     auto& mix = control<juce::Slider>(editor, "mix");
@@ -528,6 +528,7 @@ void testControls(DuckerProcessor& p, juce::AudioProcessorEditor& editor) {
     require(std::abs(get(p, "detectorLpf") - 8000) < 1, "Detector low-pass slider disconnected");
     control<juce::Button>(editor, "detectorMonitor").setToggleState(true, juce::sendNotificationSync);
     require(get(p, "detectorMonitor") > 0.5f, "Detector listen button disconnected");
+    set(p, "shift", 0);
     auto& display = control<juce::Component>(editor, "display");
     const auto time = juce::Time::getCurrentTime();
     const auto event = [&](juce::Point<float> position, bool dragged) {
@@ -543,6 +544,154 @@ void testControls(DuckerProcessor& p, juce::AudioProcessorEditor& editor) {
     require(get(p, "length") == 100, "Double-clicking the handle does not reset the slope length");
     set(p, "bandOn", 0); set(p, "bandSolo", 0); set(p, "shift", 0); set(p, "tension", 0); set(p, "floor", 0); set(p, "bandSlope", 1); set(p, "retrigger", 1);
 }
+
+void renderCycle(DuckerProcessor& processor, Host& host, int cycleSamples, bool sidechain, float mainLevel, int clickSamples) {
+    const int channels = processor.getTotalNumInputChannels();
+    for(int start = 0; start < cycleSamples; start += 512) {
+        const int count = std::min(512, cycleSamples - start);
+        juce::AudioBuffer<float> audio(channels, count);
+        audio.clear();
+        juce::MidiBuffer midi;
+        for(int i = 0; i < count; ++i) {
+            const float click = (start + i) < clickSamples ? 0.95f : 0.0f;
+            const float mainSample = sidechain ? mainLevel : click;
+            audio.setSample(0, i, mainSample);
+            if(channels > 1) audio.setSample(1, i, mainSample);
+            if(sidechain && channels > 2) {
+                audio.setSample(2, i, click);
+                if(channels > 3) audio.setSample(3, i, click);
+            }
+        }
+        host.position.setPpqPosition(static_cast<double>(start) / static_cast<double>(cycleSamples));
+        processor.processBlock(audio, midi);
+    }
+}
+
+void testBeatLockedWaveform() {
+    constexpr int cycleSamples = 24000; // 120 BPM, one beat, the default 1/4 cycle
+    Host host;
+    host.position.setIsPlaying(true); host.position.setBpm(120); host.position.setPpqPosition(0);
+    DuckerProcessor side;
+    juce::AudioProcessor::BusesLayout buses;
+    buses.inputBuses = {juce::AudioChannelSet::stereo(), juce::AudioChannelSet::stereo()};
+    buses.outputBuses = {juce::AudioChannelSet::stereo()};
+    require(side.setBusesLayout(buses), "Sidechain layout rejected");
+    side.setPlayHead(&host);
+    set(side, "smoothing", 0); set(side, "rate", 1);
+    side.prepareToPlay(sampleRate, 512);
+    renderCycle(side, host, cycleSamples, true, 0.4f, 60);
+    require(side.sourceIsSidechain.load(), "Connected sidechain is not the waveform source");
+    require(side.sourceBins[0].load() > 0.8f, "Sidechain click is not at the start of the host cycle");
+    require(side.sourceBins[static_cast<size_t>(DuckerProcessor::displayBins / 2)].load() < 0.05f, "Sidechain waveform is not locked to the cycle");
+    side.reset();
+    set(side, "shift", 50);
+    renderCycle(side, host, cycleSamples, true, 0.4f, 60);
+    require(side.sourceBins[0].load() > 0.8f, "Shift moved the beat-locked sidechain click");
+    require(side.sourceBins[static_cast<size_t>(DuckerProcessor::displayBins / 2)].load() < 0.05f, "Shift redrew the sidechain across the cycle");
+    side.setPlayHead(nullptr);
+
+    DuckerProcessor direct;
+    direct.setPlayHead(&host);
+    set(direct, "smoothing", 0); set(direct, "rate", 1);
+    direct.prepareToPlay(sampleRate, 512);
+    renderCycle(direct, host, cycleSamples, false, 0.0f, 60);
+    require(!direct.sourceIsSidechain.load(), "Main input was reported as a sidechain");
+    require(direct.sourceBins[0].load() > 0.8f, "Main input click is not at the start of the host cycle");
+    require(direct.sourceBins[static_cast<size_t>(DuckerProcessor::displayBins / 2)].load() < 0.05f, "Main input waveform is not locked to the cycle");
+    direct.setPlayHead(nullptr);
+}
+
+void testSuite(DuckerProcessor& processor, juce::AudioProcessorEditor& editor) {
+    require(processor.getNumPrograms() == 16, "Factory bank should contain 16 patches");
+    juce::StringArray names;
+    for(int i = 0; i < processor.getNumPrograms(); ++i) {
+        const auto name = processor.getProgramName(i);
+        require(name.isNotEmpty() && !names.contains(name), "Factory program names must be present and unique");
+        names.add(name);
+    }
+    processor.changeProgramName(0, "Renamed");
+    require(processor.getProgramName(0) == "Classic Pump", "Factory presets must stay read-only");
+    processor.setCurrentProgram(2);
+    require(processor.getCurrentProgram() == 2, "Program index did not follow the host");
+    require(std::abs(get(processor, "curve") - 5.0f) < 0.01f && std::abs(get(processor, "rate")) < 0.01f, "Trance Gate did not load");
+    processor.setCurrentProgram(0);
+    require(std::abs(get(processor, "curve") - 2.0f) < 0.01f && get(processor, "fxEnabled") < 0.5f, "Classic Pump is not the original default patch");
+    processor.setCurrentProgram(8);
+    require(get(processor, "fxEnabled") > 0.5f && get(processor, "destroy") > 70.0f, "Destroy Pump did not load");
+    processor.undoEdit();
+    require(get(processor, "fxEnabled") < 0.5f, "Loading a preset is not a single undo step");
+
+    auto* mix = processor.parameters.getParameter("mix");
+    const float mixStart = mix->getValue();
+    mix->beginChangeGesture();
+    mix->setValueNotifyingHost(mix->convertTo0to1(30));
+    mix->setValueNotifyingHost(mix->convertTo0to1(45));
+    mix->setValueNotifyingHost(mix->convertTo0to1(62));
+    mix->endChangeGesture();
+    require(std::abs(get(processor, "mix") - 62.0f) < 0.2f, "Parameter gesture did not apply");
+    processor.undoEdit();
+    require(std::abs(mix->getValue() - mixStart) < 1.0e-4f, "Undo did not group the gesture into one step");
+    processor.redoEdit();
+    require(std::abs(get(processor, "mix") - 62.0f) < 0.2f, "Redo did not restore the gesture");
+    require(editor.keyPressed(juce::KeyPress('z', juce::ModifierKeys::commandModifier, 0)), "Undo shortcut was ignored");
+    require(std::abs(mix->getValue() - mixStart) < 1.0e-4f, "Cmd/Ctrl+Z did not undo");
+    require(editor.keyPressed(juce::KeyPress('z', juce::ModifierKeys::commandModifier | juce::ModifierKeys::shiftModifier, 0)), "Redo shortcut was ignored");
+    require(std::abs(get(processor, "mix") - 62.0f) < 0.2f, "Shift+Cmd/Ctrl+Z did not redo");
+    control<juce::Button>(editor, "undo").onClick();
+    require(std::abs(mix->getValue() - mixStart) < 1.0e-4f, "Undo button did not undo");
+    control<juce::Button>(editor, "redo").onClick();
+    require(std::abs(get(processor, "mix") - 62.0f) < 0.2f, "Redo button did not redo");
+
+    set(processor, "mix", 17);
+    processor.copyAToB();
+    set(processor, "mix", 73);
+    processor.selectSlotB();
+    require(!processor.slotIsA() && std::abs(get(processor, "mix") - 17.0f) < 0.2f, "Slot B did not recall its copy");
+    processor.selectSlotA();
+    require(processor.slotIsA() && std::abs(get(processor, "mix") - 73.0f) < 0.2f, "Slot A did not recall the live edit");
+    processor.copyBToA();
+    require(std::abs(get(processor, "mix") - 17.0f) < 0.2f, "Copy B to A did not apply");
+    set(processor, "mix", 41);
+    processor.copyAToB();
+    set(processor, "mix", 88);
+    processor.selectSlotB();
+    juce::MemoryBlock state;
+    processor.getStateInformation(state);
+    DuckerProcessor recalled;
+    recalled.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+    require(!recalled.slotIsA() && std::abs(get(recalled, "mix") - 41.0f) < 0.2f, "Session recall lost slot B");
+    recalled.selectSlotA();
+    require(recalled.slotIsA() && std::abs(get(recalled, "mix") - 88.0f) < 0.2f, "Session recall lost slot A");
+
+    auto directory = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("openDucker-preset-test");
+    directory.deleteRecursively();
+    processor.presets().setDirectory(directory);
+    set(processor, "mix", 33);
+    juce::String error;
+    require(processor.savePreset("My Pump", error), "Could not save a user preset");
+    require(!processor.savePreset("Classic Pump", error), "A factory preset name was overwritten");
+    set(processor, "mix", 5);
+    require(processor.loadPreset("user:My Pump"), "User preset did not load");
+    require(std::abs(get(processor, "mix") - 33.0f) < 0.2f, "User preset did not restore its values");
+    require(processor.renamePreset("user:My Pump", "Renamed Pump", error), "Could not rename a user preset");
+    require(processor.presets().find("user:Renamed Pump").has_value(), "Renamed preset is missing");
+    require(!processor.renamePreset("factory:Classic Pump", "Nope", error), "Factory preset was renamed");
+    require(!processor.deletePreset("factory:Trance Gate", error), "Factory preset was deleted");
+    processor.setPresetFavorite("factory:Trance Gate", true);
+    const auto matches = processor.presets().filtered("gate");
+    require(matches.size() >= 2, "Preset search missed a gate patch");
+    bool favoriteFound = false;
+    for(const auto& entry : matches) if(entry.name == "Trance Gate") favoriteFound = entry.favorite;
+    require(favoriteFound, "Favorite flag did not survive search");
+    DuckerProcessor fromDisk;
+    fromDisk.presets().setDirectory(directory);
+    require(fromDisk.presets().find("user:Renamed Pump").has_value(), "User preset was not written to disk");
+    require(fromDisk.presets().isFavorite("factory:Trance Gate"), "Favorites were not written to disk");
+    require(processor.deletePreset("user:Renamed Pump", error), "Could not delete a user preset");
+    require(!processor.presets().find("user:Renamed Pump").has_value(), "Deleted preset is still listed");
+    directory.deleteRecursively();
+    std::cout << "PASS beat-locked waveform, factory programs, undo, A/B and user presets\n";
+}
 }
 
 int main(int argc, char** argv) {
@@ -553,6 +702,7 @@ int main(int argc, char** argv) {
         testFxMatrix<float>(); testFxMatrix<double>();
         testEffectsRouting<float>(); testEffectsRouting<double>();
         testMonoAndDisabledEffects<float>(); testMonoAndDisabledEffects<double>();
+        testBeatLockedWaveform();
         const bool floatReset = testHostReset<float>("float"), doubleReset = testHostReset<double>("double");
         require(floatReset && doubleReset, "Host reset leaves an audible effects tail");
 
@@ -561,7 +711,7 @@ int main(int argc, char** argv) {
         Host host; host.position.setIsPlaying(true); host.position.setBpm(128); host.position.setPpqPosition(0);
         DuckerProcessor p; p.setPlayHead(&host); p.prepareToPlay(sampleRate, 512);
         std::unique_ptr<juce::AudioProcessorEditor> editor(p.createEditor());
-        editor->setSize(1000, 760);
+        editor->setSize(1000, 804);
         juce::AudioBuffer<float> clockAudio(2, 256);
         juce::MidiBuffer clockMidi;
         clockAudio.clear();
@@ -570,11 +720,11 @@ int main(int argc, char** argv) {
         host.position.setPpqPosition(-1.75);
         p.processBlock(clockAudio, clockMidi);
         require(std::abs(p.artworkPhase() - 0.25f) < 0.0001f, "SVG follows a negative host position");
-        const auto onbeat = editor->createComponentSnapshot(juce::Rectangle<int>(52, 93, 51, 88));
+        const auto onbeat = editor->createComponentSnapshot(juce::Rectangle<int>(52, 137, 51, 88));
         host.position.setPpqPosition(22.875);
         p.processBlock(clockAudio, clockMidi);
         require(std::abs(p.artworkPhase() - 0.875f) < 0.0001f, "SVG follows a host seek");
-        const auto offbeat = editor->createComponentSnapshot(juce::Rectangle<int>(52, 93, 51, 88));
+        const auto offbeat = editor->createComponentSnapshot(juce::Rectangle<int>(52, 137, 51, 88));
         int changed = 0;
         for (int y = 0; y < onbeat.getHeight(); ++y)
             for (int x = 0; x < onbeat.getWidth(); ++x)
@@ -593,20 +743,21 @@ int main(int argc, char** argv) {
         host.position.setBpm(128);
         host.position.setPpqPosition(0);
         checkButtonLayout(*editor, 40);
-        editor->setSize(800, 608);
+        editor->setSize(800, 643);
         checkButtonLayout(*editor, 32);
-        editor->setSize(1000, 760);
+        editor->setSize(1000, 804);
         testControls(p, *editor);
         testEffectsControls(p, *editor);
         testEqDetents(p, *editor);
+        testSuite(p, *editor);
         for(auto* parameter : p.getParameters()) parameter->setValueNotifyingHost(parameter->getDefaultValue());
         for(const auto& [id, value] : std::initializer_list<std::pair<const char*, float>> {{"rate", 1}, {"trigger", 0}, {"curve", 2}, {"mix", 79},
             {"shift", 0}, {"threshold", -24}, {"retrigger", 1}, {"bandFrequency", 150}, {"smoothing", 1}, {"length", 100}, {"fxEnabled", 1}}) set(p, id, value);
         p.reset(); render<float>(p, host, 0, 22500 * 2, false);
         save(*editor, output, "openDucker-sync.png");
         const auto image = editor->createComponentSnapshot(editor->getLocalBounds());
-        require(yellowPixels(image, {357, 55, 631, 295}) > 600, "The display does not draw the curve");
-        require(yellowPixels(image, {357, 405, 631, 95}) > 100, "The selected curve button is not highlighted");
+        require(yellowPixels(image, {357, 99, 631, 295}) > 600, "The display does not draw the curve");
+        require(yellowPixels(image, {357, 449, 631, 95}) > 100, "The selected curve button is not highlighted");
         set(p, "mix", 79); set(p, "curve", 4); set(p, "length", 72); set(p, "trigger", 2); set(p, "rate", 1);
         host.position.setIsPlaying(false);
         p.reset(); render<float>(p, host, 0, 22500 * 3, false);

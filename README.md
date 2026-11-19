@@ -19,7 +19,9 @@
 - **Effects rack:** Turn on FX On to add tempo-synced stereo or ping-pong Delay, Reverb, Sustain, and Destroy.
 - **Delay and Reverb:** Delay syncs from 1/32 note to one bar and has feedback and bass/treble shelves. Reverb offers modulated Room, Hall, or Plate types. Set decay from 0.2 to 25 seconds, stereo width, and bass/treble shelves. Set FX Mix and output trim from −24 to +12 dB. The output meter shows peaks.
 - **Effects routing:** Choose whether to duck the dry signal, effects, or both. Place ducking before or after the effects. Route Delay and Reverb in series or parallel.
-- **Display and menu:** Compare input and output levels across one curve cycle. Hide or show the effects rack while it continues to process audio. Set trigger smoothing to Off, Low, Medium, or High. The menu can reset slope and shift.
+- **Display and menu:** The curve view draws the incoming audio behind the duck curve and keeps it locked to the host cycle. A connected sidechain is shown there; otherwise the main input is shown. Output level stays on the same grid. Hide or show the effects rack while it continues to process audio. Set trigger smoothing to Off, Low, Medium, or High. The menu can reset slope and shift.
+- **Presets:** Sixteen factory patches are in the DAW program list and the preset browser. Factory patches stay read-only. Save, rename, and delete your own presets in Documents/Alan Marcero/openDucker/Presets. Search the list and mark favorites.
+- **Undo and compare:** Undo and redo parameter edits with the buttons, or with Cmd/Ctrl+Z and Shift+Cmd/Ctrl+Z. Slots A and B each hold a full patch. Copy either slot into the other.
 
 Sustain raises quieter parts and controls peaks. Destroy offers Tail and Always modes and adds bitcrush, stutter, and drive. MIDI and Audio triggers can work while playback is stopped.
 
@@ -42,4 +44,4 @@ Rescan plugins in your DAW after installation. The macOS bundle is not notarized
 
 ## License
 
-openDucker uses the AGPL-3.0 license. See [LICENSE](LICENSE) and [third-party notices](THIRD_PARTY.md). This project is not affiliated with or endorsed by Cableguys. Kickstart, Nicky Romero, and Cableguys are trademarks of their respective owners.
+openDucker is released under the MIT license. See [LICENSE](LICENSE). Third-party components, including JUCE, keep their own licenses; see [third-party notices](THIRD_PARTY.md). This project is not affiliated with or endorsed by Cableguys. Kickstart, Nicky Romero, and Cableguys are trademarks of their respective owners.

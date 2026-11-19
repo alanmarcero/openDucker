@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "FactoryPresets.h"
 #include "PluginEditor.h"
 #include <algorithm>
 #include <cmath>
@@ -76,11 +77,16 @@ DuckerProcessor::DuckerProcessor()
     : AudioProcessor(BusesProperties().withInput("Input", juce::AudioChannelSet::stereo(), true)
           .withOutput("Output", juce::AudioChannelSet::stereo(), true)
           .withInput("Sidechain", juce::AudioChannelSet::stereo(), false)),
-      parameters(*this, nullptr, "openDucker", layout()) {
+      parameters(*this, nullptr, "openDucker", layout()),
+      parameterUndo(*this, parameters),
+      abCompare(parameters),
+      presetLibrary(parameters, "openDucker") {
     for(size_t i = 0; i < ids.size(); ++i) values[i] = parameters.getRawParameterValue(ids[i]);
     for(size_t i = 0; i < fxIds.size(); ++i) fxParameters[i] = parameters.getRawParameterValue(fxIds[i]);
     for(auto& bin : inputBins) bin.store(0);
     for(auto& bin : outputBins) bin.store(0);
+    for(auto& bin : sourceBins) bin.store(0);
+    presetLibrary.setFactory(duck::makeFactoryPresets(parameters));
 }
 
 void DuckerProcessor::prepareToPlay(double rate, int) {
@@ -90,7 +96,7 @@ void DuckerProcessor::prepareToPlay(double rate, int) {
     for(auto& filter : detectorFilters) { filter.prepare(rate); filter.reset(); }
     setLatencySamples(0);
     effectsRunning = false;
-    bandFrequency = -1; lastBin = -1; binInput = binOutput = 0;
+    bandFrequency = -1; lastBin = -1; sourceLastBin = -1; binInput = binOutput = sourceHold = 0;
     for(auto* smoothed : {&mixAmount, &bandBlend, &soloBlend, &dryDuck, &wetPreDuck, &wetPostDuck, &fxBlend, &wetMix, &outputGain, &activeBlend})
         smoothed->reset(rate, 0.02);
     const bool enabled = fx(FxEnabled) > 0.5f && (fx(DelayEnabled) > 0.5f || fx(ReverbEnabled) > 0.5f || fx(Sustain) > 0 || fx(Destroy) > 0);
@@ -118,9 +124,10 @@ void DuckerProcessor::reset() {
     demoFilterL = demoFilterR = 0;
     outputPeak.store(0, std::memory_order_relaxed);
     destroyLevel.store(0, std::memory_order_relaxed);
-    lastBin = -1; binInput = binOutput = 0;
+    lastBin = -1; sourceLastBin = -1; binInput = binOutput = sourceHold = 0;
     for(auto& bin : inputBins) bin.store(0, std::memory_order_relaxed);
     for(auto& bin : outputBins) bin.store(0, std::memory_order_relaxed);
+    for(auto& bin : sourceBins) bin.store(0, std::memory_order_relaxed);
 }
 
 double DuckerProcessor::getTailLengthSeconds() const {
@@ -196,6 +203,24 @@ template<typename Sample> void DuckerProcessor::process(juce::AudioBuffer<Sample
     auto main = getBusBuffer(buffer, true, 0);
     const bool hasSidechain = getBusCount(true) > 1 && getBus(true, 1)->isEnabled();
     auto sidechain = hasSidechain ? getBusBuffer(buffer, true, 1) : juce::AudioBuffer<Sample>();
+    sourceIsSidechain.store(hasSidechain, std::memory_order_relaxed);
+    const int rateIndex = juce::jlimit(0, 3, static_cast<int>(value(Rate)));
+    if(rateIndex != sourceRate) {
+        sourceRate = rateIndex;
+        for(auto& bin : sourceBins) bin.store(0.0f, std::memory_order_relaxed);
+        sourceLastBin = -1; sourceHold = 0;
+    }
+    const juce::AudioBuffer<Sample>* sourceBuffer = hasSidechain ? &sidechain : &main;
+    const auto sourcePeak = [&](int index) {
+        if(sourceBuffer->getNumChannels() <= 0) return 0.0f;
+        const float left = std::abs(static_cast<float>(sourceBuffer->getSample(0, index)));
+        const float right = sourceBuffer->getNumChannels() > 1 ? std::abs(static_cast<float>(sourceBuffer->getSample(1, index))) : left;
+        return std::max(left, right);
+    };
+    const auto flushSource = [&] {
+        if(sourceLastBin < 0) return;
+        sourceBins[static_cast<size_t>(sourceLastBin)].store(sourceHold, std::memory_order_relaxed);
+    };
     const int channels = main.getNumChannels(), samples = main.getNumSamples();
     const bool stereo = channels > 1;
     const double detectorHpf = value(DetectorHpf), detectorLpf = value(DetectorLpf);
@@ -259,7 +284,11 @@ template<typename Sample> void DuckerProcessor::process(juce::AudioBuffer<Sample
                 if(detector.process(level)) engine.trigger();
             }
         }
+        const float incoming = sourcePeak(sample);
         gain = engine.nextGain();
+        const int beatBin = juce::jlimit(0, displayBins - 1, static_cast<int>(engine.beatPhase() * displayBins));
+        if(beatBin != sourceLastBin) { flushSource(); sourceLastBin = beatBin; sourceHold = incoming; }
+        else sourceHold = std::max(sourceHold, incoming);
         const double ducked = 1 + (gain - 1) * mixAmount.getNextValue();
         const double bandAmount = bandBlend.getNextValue(), solo = soloBlend.getNextValue(), active = activeBlend.getNextValue();
         const double dryMask = dryDuck.getNextValue(), preMask = wetPreDuck.getNextValue(), postMask = wetPostDuck.getNextValue();
@@ -301,14 +330,16 @@ template<typename Sample> void DuckerProcessor::process(juce::AudioBuffer<Sample
         const float inputPeak = static_cast<float>(stereo ? std::max(std::abs(input.left), std::abs(input.right)) : std::abs(input.left));
         const float outPeak = static_cast<float>(sampleOutPeak);
         if(!engine.running()) continue;
-        const int bin = juce::jlimit(0, displayBins - 1, static_cast<int>(engine.phase() * displayBins));
+        const int bin = juce::jlimit(0, displayBins - 1, static_cast<int>(engine.beatPhase() * displayBins));
         if(bin != lastBin) { flushBin(); lastBin = bin; binInput = inputPeak; binOutput = outPeak; continue; }
         binInput = std::max(binInput, inputPeak); binOutput = std::max(binOutput, outPeak);
     }
     flushBin();
+    flushSource();
     outputPeak.store(static_cast<float>(std::max(blockPeak, outputPeak.load() * std::exp(-samples / (sampleRate * 0.25)))), std::memory_order_relaxed);
     destroyLevel.store(effectsRunning ? static_cast<float>(effects.destroyActivity()) : 0, std::memory_order_relaxed);
     visualPhase.store(static_cast<float>(engine.phase()), std::memory_order_relaxed);
+    visualBeat.store(static_cast<float>(engine.beatPhase()), std::memory_order_relaxed);
     visualGain.store(static_cast<float>(gain), std::memory_order_relaxed);
     visualRunning.store(engine.running(), std::memory_order_relaxed);
     hostBpm.store(t.valid ? static_cast<float>(t.bpm) : 0, std::memory_order_relaxed);
@@ -321,12 +352,122 @@ void DuckerProcessor::processBlockBypassed(juce::AudioBuffer<float>& b, juce::Mi
 void DuckerProcessor::processBlockBypassed(juce::AudioBuffer<double>& b, juce::MidiBuffer& m) { process(b, m, true); }
 juce::AudioProcessorParameter* DuckerProcessor::getBypassParameter() const { return parameters.getParameter("bypass"); }
 juce::AudioProcessorEditor* DuckerProcessor::createEditor() { return new DuckerEditor(*this); }
+
+class DuckerProcessor::SnapshotAction : public juce::UndoableAction {
+public:
+    SnapshotAction(DuckerProcessor& ownerIn, SessionSnapshot beforeIn, SessionSnapshot afterIn)
+        : owner(ownerIn), before(std::move(beforeIn)), after(std::move(afterIn)) {}
+    bool perform() override { owner.restoreSnapshot(after); return true; }
+    bool undo() override { owner.restoreSnapshot(before); return true; }
+    int getSizeInUnits() override { return 64; }
+private:
+    DuckerProcessor& owner;
+    SessionSnapshot before, after;
+};
+
+DuckerProcessor::SessionSnapshot DuckerProcessor::snap() {
+    abCompare.captureActive();
+    return {parameters.copyState(), abCompare.toTree(), currentProgram, presetLibrary.activeKey()};
+}
+
+void DuckerProcessor::restoreSnapshot(const SessionSnapshot& snapshot) {
+    parameterUndo.suspend();
+    parameters.replaceState(snapshot.parameters.createCopy());
+    abCompare.readTree(snapshot.ab);
+    currentProgram = juce::jlimit(0, std::max(0, getNumPrograms() - 1), snapshot.program);
+    presetLibrary.setActiveKey(snapshot.presetKey);
+    parameterUndo.resume();
+    resetEffects.store(true);
+}
+
+void DuckerProcessor::pushUndo(const juce::String& name, SessionSnapshot before, SessionSnapshot after) {
+    if(parameterUndo.isSuspended() || parameterUndo.isApplying() || !suite::onMessageThread()) return;
+    if(before.program == after.program && before.presetKey == after.presetKey
+        && before.parameters.isEquivalentTo(after.parameters) && before.ab.isEquivalentTo(after.ab)) return;
+    parameterUndo.beginTransaction(name);
+    parameterUndo.perform(new SnapshotAction(*this, std::move(before), std::move(after)));
+}
+
+int DuckerProcessor::getNumPrograms() { return std::max(1, presetLibrary.numFactory()); }
+int DuckerProcessor::getCurrentProgram() { return currentProgram; }
+void DuckerProcessor::setCurrentProgram(int index) {
+    if(presetLibrary.numFactory() <= 0) return;
+    loadPreset(presetLibrary.factoryKey(juce::jlimit(0, presetLibrary.numFactory() - 1, index)));
+}
+const juce::String DuckerProcessor::getProgramName(int index) { return presetLibrary.factoryName(index); }
+
+void DuckerProcessor::undoEdit() { parameterUndo.undoStep(); }
+void DuckerProcessor::redoEdit() { parameterUndo.redoStep(); }
+bool DuckerProcessor::canUndo() const { return parameterUndo.canUndo(); }
+bool DuckerProcessor::canRedo() const { return parameterUndo.canRedo(); }
+bool DuckerProcessor::slotIsA() const { return abCompare.isA(); }
+
+void DuckerProcessor::selectSlotA() {
+    if(abCompare.isA()) return;
+    const auto before = snap();
+    abCompare.selectA();
+    resetEffects.store(true);
+    pushUndo("Slot A", before, snap());
+}
+void DuckerProcessor::selectSlotB() {
+    if(!abCompare.isA()) return;
+    const auto before = snap();
+    abCompare.selectB();
+    resetEffects.store(true);
+    pushUndo("Slot B", before, snap());
+}
+void DuckerProcessor::copyAToB() {
+    const auto before = snap();
+    abCompare.copyAToB();
+    if(!abCompare.isA()) resetEffects.store(true);
+    pushUndo("Copy A to B", before, snap());
+}
+void DuckerProcessor::copyBToA() {
+    const auto before = snap();
+    abCompare.copyBToA();
+    if(abCompare.isA()) resetEffects.store(true);
+    pushUndo("Copy B to A", before, snap());
+}
+
+bool DuckerProcessor::loadPreset(const juce::String& key) {
+    const auto entry = presetLibrary.find(key);
+    if(!entry) return false;
+    const auto before = snap();
+    parameterUndo.suspend();
+    parameters.replaceState(entry->state.createCopy());
+    if(entry->factory) currentProgram = entry->program;
+    presetLibrary.setActiveKey(key);
+    abCompare.captureActive();
+    parameterUndo.resume();
+    resetEffects.store(true);
+    pushUndo("Preset", before, snap());
+    return true;
+}
+bool DuckerProcessor::savePreset(const juce::String& name, juce::String& error) { return presetLibrary.saveUser(name, error); }
+bool DuckerProcessor::renamePreset(const juce::String& key, const juce::String& name, juce::String& error) {
+    return presetLibrary.renameUser(key, name, error);
+}
+bool DuckerProcessor::deletePreset(const juce::String& key, juce::String& error) { return presetLibrary.deleteUser(key, error); }
+void DuckerProcessor::setPresetFavorite(const juce::String& key, bool favorite) { presetLibrary.setFavorite(key, favorite); }
+
 void DuckerProcessor::getStateInformation(juce::MemoryBlock& data) {
-    if(auto xml = parameters.copyState().createXml()) copyXmlToBinary(*xml, data);
+    abCompare.captureActive();
+    auto state = parameters.copyState();
+    state.setProperty("program", currentProgram, nullptr);
+    state.setProperty("presetKey", presetLibrary.activeKey(), nullptr);
+    state.addChild(abCompare.toTree(), -1, nullptr);
+    if(auto xml = state.createXml()) copyXmlToBinary(*xml, data);
 }
 void DuckerProcessor::setStateInformation(const void* data, int size) {
     if(auto xml = getXmlFromBinary(data, size)) if(xml->hasTagName(parameters.state.getType())) {
         auto state = juce::ValueTree::fromXml(*xml);
+        auto suite = state.getChildWithName("suite");
+        if(suite.isValid()) state.removeChild(suite, nullptr);
+        const bool hasProgram = state.hasProperty("program");
+        const int program = hasProgram ? static_cast<int>(state.getProperty("program")) : currentProgram;
+        const auto presetKey = state.getProperty("presetKey").toString();
+        state.removeProperty("program", nullptr);
+        state.removeProperty("presetKey", nullptr);
         for(const auto* id : fxIds) if(!state.getChildWithProperty("id", id).isValid()) {
             auto* parameter = parameters.getParameter(id);
             juce::ValueTree child {"PARAM"}; child.setProperty("id", id, nullptr);
@@ -339,7 +480,14 @@ void DuckerProcessor::setStateInformation(const void* data, int size) {
             child.setProperty("value", parameter->convertFrom0to1(parameter->getDefaultValue()), nullptr);
             state.addChild(child, -1, nullptr);
         }
+        parameterUndo.suspend();
         parameters.replaceState(state);
+        parameterUndo.resume();
+        if(suite.isValid()) abCompare.readTree(suite);
+        else abCompare.resetBothFromCurrent();
+        if(hasProgram) currentProgram = juce::jlimit(0, std::max(0, getNumPrograms() - 1), program);
+        if(presetKey.isNotEmpty()) presetLibrary.setActiveKey(presetKey);
+        parameterUndo.clearHistory();
         resetEffects.store(true);
     }
 }

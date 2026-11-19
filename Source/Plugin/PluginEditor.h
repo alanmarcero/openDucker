@@ -1,6 +1,7 @@
 #pragma once
 #include "PluginProcessor.h"
 #include "EffectsPanel.h"
+#include "SuiteBar.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 
 namespace look {
@@ -48,8 +49,11 @@ public:
     void mouseDoubleClick(const juce::MouseEvent&) override;
 private:
     float lengthFraction() const;
+    float shiftFraction() const;
+    float handleX() const;
     bool overHandle(juce::Point<float>) const;
     void setLength(float fraction);
+    void setLengthFromPointer(float x);
     DuckerProcessor& owner;
     bool dragging = false;
 };
@@ -60,6 +64,7 @@ public:
     ~DuckerEditor() override;
     void paint(juce::Graphics&) override;
     void resized() override;
+    bool keyPressed(const juce::KeyPress&) override;
 private:
     void timerCallback() override;
     void paintDuckBooth(juce::Graphics& g, juce::Rectangle<float> area, float s);
@@ -71,6 +76,7 @@ private:
     DuckLookAndFeel theme;
     CurveDisplay display;
     EffectsPanel effectsPanel;
+    suite::SuiteBar suiteBar;
     juce::TextButton effectsToggle;
     juce::TextButton pushItButton {"Audition"};
     bool effectsExpanded = true;

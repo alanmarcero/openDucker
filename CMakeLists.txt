@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(openDucker VERSION 2.6.1 LANGUAGES C CXX)
+project(openDucker VERSION 2.7.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 if(MSVC)
@@ -37,10 +37,12 @@ if(OD_BUILD_PLUGIN)
         PLUGIN_MANUFACTURER_CODE Amrc PLUGIN_CODE Oduk
         FORMATS ${OD_FORMATS} VST3_CATEGORIES Fx Dynamics
         IS_SYNTH FALSE NEEDS_MIDI_INPUT TRUE NEEDS_MIDI_OUTPUT FALSE
-        IS_MIDI_EFFECT FALSE EDITOR_WANTS_KEYBOARD_FOCUS FALSE
+        IS_MIDI_EFFECT FALSE EDITOR_WANTS_KEYBOARD_FOCUS TRUE
         COPY_PLUGIN_AFTER_BUILD FALSE)
-    target_sources(openDucker PRIVATE Source/Plugin/PluginProcessor.cpp Source/Plugin/PluginEditor.cpp Source/Plugin/EffectsPanel.cpp)
-    target_include_directories(openDucker PUBLIC Source/Plugin)
+    target_sources(openDucker PRIVATE
+        Source/Plugin/PluginProcessor.cpp Source/Plugin/PluginEditor.cpp Source/Plugin/EffectsPanel.cpp Source/Plugin/FactoryPresets.cpp
+        Source/suite/ParameterUndo.cpp Source/suite/ABCompare.cpp Source/suite/PresetLibrary.cpp Source/suite/SuiteBar.cpp)
+    target_include_directories(openDucker PUBLIC Source/Plugin Source/suite)
     target_compile_definitions(openDucker PUBLIC JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)
     target_link_libraries(openDucker PRIVATE ducker_core DuckAssets juce::juce_audio_utils
         PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
