@@ -106,12 +106,15 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: preview-screenshot
-          path: build/screenshots/openDucker-sync.png
+          path: build/screenshots/preview.png
           if-no-files-found: error
 
   update-preview:
     # Refreshes docs/screenshots/preview.png (the image OpenVST Manager shows) from the
-    # real editor capture whenever UI-affecting files change on main.
+    # factory-default editor capture on every main push whose render differs.
+    # A path filter used to skip this when the diff was outside Source|assets|Tools|Tests.
+    # That dropped the v2.7.1 capture: the version drawn on the editor comes from
+    # CMakeLists.txt, so the job logged "No UI changes; keeping preview." and left the old image.
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     needs: windows
     runs-on: ubuntu-latest
@@ -127,9 +130,8 @@ jobs:
           path: preview
       - name: Commit refreshed preview if changed
         run: |
-          git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" | grep -qE '^(Source|assets|Tools|tools|Tests)/' || { echo "No UI changes; keeping preview."; exit 0; }
           mkdir -p docs/screenshots
-          cp "preview/openDucker-sync.png" docs/screenshots/preview.png
+          cp "preview/preview.png" docs/screenshots/preview.png
           if git diff --quiet -- docs/screenshots/preview.png; then echo "Preview unchanged."; exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
