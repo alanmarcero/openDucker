@@ -78,7 +78,7 @@ private:
         DetectorHpf, DetectorLpf, DetectorMonitor, Tension, Floor, BandSlope, IdCount };
     enum FxParameter { FxEnabled, DuckTarget, DuckPosition, FxMix, DelayEnabled, DelayLength,
         DelayFeedback, DelayBass, DelayTreble, DelayMode, ReverbEnabled, ReverbType,
-        ReverbLength, ReverbWidth, ReverbBass, ReverbTreble, Sustain, Destroy, Output, FxFlow, DestroyMode, FxCount };
+        ReverbLength, ReverbWidth, ReverbBass, ReverbTreble, Sustain, Destroy, Output, FxFlow, DestroyMode, Lookahead, FxCount };
     struct SessionSnapshot {
         juce::ValueTree parameters;
         juce::ValueTree ab;
@@ -99,6 +99,9 @@ private:
     duck::TransientDetector detector;
     std::array<duck::SidechainFilter, 2> detectorFilters;
     duck::Effects effects;
+    std::array<std::vector<double>, 2> lookaheadLines;
+    size_t lookaheadPosition = 0;
+    int lookaheadSamples = -1;
     std::array<std::atomic<float>*, IdCount> values {};
     std::array<std::atomic<float>*, FxCount> fxParameters {};
     juce::SmoothedValue<double> mixAmount, bandBlend, soloBlend, dryDuck, wetPreDuck, wetPostDuck, fxBlend, wetMix, outputGain, activeBlend;

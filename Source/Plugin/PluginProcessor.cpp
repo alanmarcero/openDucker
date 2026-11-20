@@ -10,9 +10,9 @@ constexpr std::array<double, 8> delayBeats {0.125, 0.25, 0.5, 0.75, 1, 1.5, 2, 4
 constexpr std::array<const char*, 19> ids {"mix", "curve", "rate", "length", "shift", "trigger", "retrigger", "threshold",
     "smoothing", "bandOn", "bandFrequency", "bandSolo", "bypass", "detectorHpf", "detectorLpf", "detectorMonitor",
     "tension", "floor", "bandSlope"};
-constexpr std::array<const char*, 21> fxIds {"fxEnabled", "duckTarget", "duckPosition", "fxMix", "delayEnabled", "delayLength",
+constexpr std::array<const char*, 22> fxIds {"fxEnabled", "duckTarget", "duckPosition", "fxMix", "delayEnabled", "delayLength",
     "delayFeedback", "delayBass", "delayTreble", "delayMode", "reverbEnabled", "reverbType",
-    "reverbLength", "reverbWidth", "reverbBass", "reverbTreble", "sustain", "destroy", "output", "fxFlow", "destroyMode"};
+    "reverbLength", "reverbWidth", "reverbBass", "reverbTreble", "sustain", "destroy", "output", "fxFlow", "destroyMode", "lookahead"};
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout DuckerProcessor::layout() {
@@ -70,6 +70,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout DuckerProcessor::layout() {
     number("tension", "Curve tension", {-100, 100, 0.5f}, 0, "%", 3);
     number("floor", "Duck floor", {0, 100, 0.5f}, 0, "%", 3);
     choice("bandSlope", "Band slope", {"12 dB/oct", "24 dB/oct", "48 dB/oct"}, 1, 3);
+    number("lookahead", "Lookahead", {0, 5, 0.1f}, 0, "ms", 4);
     return result;
 }
 
@@ -94,7 +95,11 @@ void DuckerProcessor::prepareToPlay(double rate, int) {
     artworkClock.reset();
     engine.prepare(rate); crossover.prepare(rate); detector.prepare(rate); effects.prepare(rate);
     for(auto& filter : detectorFilters) { filter.prepare(rate); filter.reset(); }
-    setLatencySamples(0);
+    for(auto& line : lookaheadLines) line.assign(static_cast<size_t>(rate * 0.005) + 2, 0.0);
+    lookaheadPosition = 0;
+    lookaheadSamples = juce::jlimit(0, static_cast<int>(lookaheadLines[0].size()) - 1,
+        static_cast<int>(std::round(fx(Lookahead) * 0.001 * rate)));
+    setLatencySamples(lookaheadSamples);
     effectsRunning = false;
     bandFrequency = -1; lastBin = -1; sourceLastBin = -1; binInput = binOutput = sourceHold = 0;
     for(auto* smoothed : {&mixAmount, &bandBlend, &soloBlend, &dryDuck, &wetPreDuck, &wetPostDuck, &fxBlend, &wetMix, &outputGain, &activeBlend})
@@ -117,6 +122,9 @@ void DuckerProcessor::prepareToPlay(double rate, int) {
 
 void DuckerProcessor::reset() {
     resetEffects.store(true);
+    for(auto& line : lookaheadLines) std::fill(line.begin(), line.end(), 0.0);
+    lookaheadPosition = 0;
+    crossover.reset();
     for(auto& filter : detectorFilters) filter.reset();
     triggerDemo.store(false);
     demoImpactSamplesLeft = 0;
@@ -199,6 +207,14 @@ template<typename Sample> void DuckerProcessor::process(juce::AudioBuffer<Sample
     settings.parallel = fx(FxFlow) > 0.5f; settings.destroyAlways = fx(DestroyMode) > 0.5f;
     if(resetEffects.exchange(false)) { effects.reset(); effectsRunning = false; outputPeak.store(0, std::memory_order_relaxed); }
     effects.setParameters(settings);
+    const int requestedLookahead = lookaheadLines[0].empty() ? 0 : juce::jlimit(0, static_cast<int>(lookaheadLines[0].size()) - 1,
+        static_cast<int>(std::round(fx(Lookahead) * 0.001 * sampleRate)));
+    if(requestedLookahead != lookaheadSamples) {
+        lookaheadSamples = requestedLookahead;
+        setLatencySamples(lookaheadSamples);
+        for(auto& line : lookaheadLines) std::fill(line.begin(), line.end(), 0.0);
+        lookaheadPosition = 0;
+    }
 
     auto main = getBusBuffer(buffer, true, 0);
     const bool hasSidechain = getBusCount(true) > 1 && getBus(true, 1)->isEnabled();
@@ -293,26 +309,37 @@ template<typename Sample> void DuckerProcessor::process(juce::AudioBuffer<Sample
         const double bandAmount = bandBlend.getNextValue(), solo = soloBlend.getNextValue(), active = activeBlend.getNextValue();
         const double dryMask = dryDuck.getNextValue(), preMask = wetPreDuck.getNextValue(), postMask = wetPostDuck.getNextValue();
         const double blend = fxBlend.getNextValue(), mix = wetMix.getNextValue() * blend, trim = outputGain.getNextValue();
-        const duck::Stereo input {static_cast<double>(main.getSample(0, sample)) + demoL, static_cast<double>(main.getSample(stereo ? 1 : 0, sample)) + demoR};
+        const double rawLeft = static_cast<double>(main.getSample(0, sample));
+        const double rawRight = static_cast<double>(main.getSample(stereo ? 1 : 0, sample));
+        double delayedLeft = rawLeft, delayedRight = rawRight;
+        if(lookaheadSamples > 0 && !lookaheadLines[0].empty()) {
+            // The detector and engine above read the undelayed source, so the
+            // duck reaches its floor while the transient is still in this line.
+            lookaheadLines[0][lookaheadPosition] = rawLeft;
+            lookaheadLines[1][lookaheadPosition] = rawRight;
+            const size_t readPosition = (lookaheadPosition + lookaheadLines[0].size() - static_cast<size_t>(lookaheadSamples)) % lookaheadLines[0].size();
+            delayedLeft = lookaheadLines[0][readPosition];
+            delayedRight = lookaheadLines[1][readPosition];
+            lookaheadPosition = (lookaheadPosition + 1) % lookaheadLines[0].size();
+        }
+        const duck::Stereo input {delayedLeft + demoL, delayedRight + demoR};
         const bool useCrossover = bandAmount > 0.0;
         const duck::Bands bandsL = useCrossover ? crossover.split(0, input.left) : duck::Bands{input.left, 0.0};
         const duck::Bands bandsR = useCrossover ? (stereo ? crossover.split(1, input.right) : bandsL) : duck::Bands{input.right, 0.0};
-        const auto shapeChannel = [&](double x, duck::Bands bands, double mask) {
-            const double branchGain = 1 + (ducked - 1) * mask;
-            const double selected = x + (bands.low - x) * bandAmount;
-            const double rest = x + (bands.low + bands.high - x) * bandAmount;
-            const double shaped = rest + selected * (branchGain - 1);
-            return shaped + (selected * branchGain - shaped) * solo;
+        const auto shapeChannel = [&](duck::Bands bands, double mask) {
+            const double branchGain = 1.0 + (ducked - 1.0) * mask;
+            const double highGain = (branchGain + (1.0 - branchGain) * bandAmount) * (1.0 - solo);
+            return bands.low * branchGain + bands.high * highGain;
         };
-        const double dryLeft = shapeChannel(input.left, bandsL, dryMask);
-        const double dryRight = shapeChannel(input.right, bandsR, dryMask);
+        const double dryLeft = shapeChannel(bandsL, dryMask);
+        const double dryRight = shapeChannel(bandsR, dryMask);
         duck::Stereo wet;
         if(blend <= 0 && effectsRunning) {
             effects.reset();
             effectsRunning = false;
         }
         if(blend > 0) {
-            wet = effects.process({shapeChannel(input.left, bandsL, preMask), shapeChannel(input.right, bandsR, preMask)},
+            wet = effects.process({shapeChannel(bandsL, preMask), shapeChannel(bandsR, preMask)},
                 std::max(std::abs(input.left), std::abs(input.right)));
             effectsRunning = true;
         }

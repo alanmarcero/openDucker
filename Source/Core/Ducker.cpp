@@ -39,7 +39,9 @@ void Engine::beginBlock(Transport t, Parameters p) noexcept {
     p.floor = std::isfinite(p.floor) ? std::clamp(p.floor, 0.0, 1.0) : 0.0;
     parameters = p;
     const double milliseconds = smoothingMilliseconds[static_cast<size_t>(p.smoothing)];
-    smoothingCoefficient = milliseconds > 0 ? std::exp(-1.0 / (milliseconds * 0.001 * sampleRate)) : 0.0;
+    smoothingMs = milliseconds;
+    attackCoefficient = std::exp(-1.0 / (0.0015 * sampleRate));
+    releaseCoefficient = milliseconds > 0 ? std::exp(-1.0 / (milliseconds * 0.001 * sampleRate)) : 0.0;
     const bool hostTiming = t.valid && std::isfinite(t.ppq) && std::abs(t.ppq) < 1e12 && usableBpm(t.bpm);
     bpm = hostTiming ? t.bpm : (bpm > 0.0 ? bpm : 120.0);
     syncActive = hostTiming && t.playing;
@@ -52,6 +54,15 @@ void Engine::beginBlock(Transport t, Parameters p) noexcept {
 void Engine::trigger() noexcept {
     if(parameters.trigger == Trigger::Sync) return;
     if(isRunning && !parameters.retrigger) return;
+    // Legato retrigger: glide from the partially recovered gain into the new
+    // curve over 2 ms instead of jumping to phase 0. Small gaps need no glide,
+    // and a first trigger from idle must still duck on its own sample.
+    legatoElapsed = 0;
+    legatoTotal = 0;
+    if(isRunning && gain > 0.15) {
+        legatoStart = gain;
+        legatoTotal = std::max(1, static_cast<int>(0.002 * sampleRate));
+    }
     isRunning = true;
     elapsed = 0;
 }
@@ -79,19 +90,59 @@ double Engine::nextGain() noexcept {
         if(lastPhase < 0.0) lastPhase += 1.0;
         target = cycleGain(parameters.curve, lastPhase, parameters.length, parameters.tension, parameters.floor);
         ++offset;
-        gain = target + (gain - target) * smoothingCoefficient;
-        return std::clamp(gain, 0.0, 1.0);
+    } else {
+        if(isRunning) {
+            const double phase = elapsed / cycleSamples() - parameters.shift;
+            elapsed += 1;
+            if(phase >= 1) isRunning = false;
+            lastPhase = std::clamp(phase, 0.0, 1.0);
+            if(isRunning && phase >= 0) target = cycleGain(parameters.curve, phase, parameters.length, parameters.tension, parameters.floor);
+        }
+        ++offset;
     }
 
-    if(isRunning) {
-        const double phase = elapsed / cycleSamples() - parameters.shift;
-        elapsed += 1;
-        if(phase >= 1) isRunning = false;
-        lastPhase = std::clamp(phase, 0.0, 1.0);
-        if(isRunning && phase >= 0) target = cycleGain(parameters.curve, phase, parameters.length, parameters.tension, parameters.floor);
+    // Asymmetric log-domain ballistics: large downward steps take a 1.5-3 ms
+    // minimum-jerk S-curve to the floor, small downward drift tracks with a
+    // fast attack, and recovery follows the slower exponential release.
+    if(smoothingMs <= 0) {
+        gain = target;
+        transitioning = false;
+    } else {
+        constexpr double floorLin = 1e-4;
+        const double logTarget = std::log(std::max(target, floorLin));
+        double logGain = std::log(std::max(gain, floorLin));
+        if(target < gain) {
+            if(!transitioning && gain - target > 0.08) {
+                transitioning = true;
+                transitionStartLog = logGain;
+                transitionElapsed = 0;
+                transitionTotal = std::max(1, static_cast<int>(std::clamp(smoothingMs, 1.5, 3.0) * 0.001 * sampleRate));
+            }
+            if(transitioning) {
+                ++transitionElapsed;
+                const double progress = std::clamp(static_cast<double>(transitionElapsed) / transitionTotal, 0.0, 1.0);
+                const double jerk = progress * progress * progress * (progress * (progress * 6 - 15) + 10);
+                logGain = transitionStartLog + (logTarget - transitionStartLog) * jerk;
+                if(transitionElapsed >= transitionTotal) transitioning = false;
+            } else {
+                logGain += (1 - attackCoefficient) * (logTarget - logGain);
+            }
+        } else {
+            transitioning = false;
+            logGain += (1 - releaseCoefficient) * (logTarget - logGain);
+            if(logTarget - logGain < 5e-4) logGain = logTarget;
+        }
+        gain = std::clamp(std::exp(logGain), 0.0, 1.0);
     }
-    ++offset;
-    gain = target + (gain - target) * smoothingCoefficient;
-    return std::clamp(gain, 0.0, 1.0);
+
+    double output = gain;
+    if(legatoTotal > 0) {
+        ++legatoElapsed;
+        const double progress = std::clamp(static_cast<double>(legatoElapsed) / legatoTotal, 0.0, 1.0);
+        const double jerk = progress * progress * progress * (progress * (progress * 6 - 15) + 10);
+        output = legatoStart + (gain - legatoStart) * jerk;
+        if(legatoElapsed >= legatoTotal) legatoTotal = 0;
+    }
+    return std::clamp(output, 0.0, 1.0);
 }
 }

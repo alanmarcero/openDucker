@@ -160,6 +160,32 @@ template<typename Sample> void testTriggers() {
         "Mismatched main layout is accepted");
 }
 
+template<typename Sample> void testLookahead() {
+    DuckerProcessor p;
+    Host host;
+    host.position.setIsPlaying(false); host.position.setBpm(120); host.position.setPpqPosition(0);
+    p.setPlayHead(&host); set(p, "smoothing", 0); set(p, "trigger", 1); set(p, "lookahead", 3);
+    p.prepareToPlay(sampleRate, 512);
+    require(p.getLatencySamples() == 144, "Lookahead does not report 3 ms of latency at 48 kHz");
+    juce::AudioBuffer<Sample> audio(2, 26000); juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::noteOn(1, 36, 1.0f), 200);
+    int i = 0;
+    while (i < 26000) {
+        const auto s = static_cast<Sample>(i >= 200 ? 0.6 : 0.0);
+        audio.setSample(0, i, s); audio.setSample(1, i, s);
+        ++i;
+    }
+    p.processBlock(audio, midi);
+    require(std::abs(static_cast<double>(audio.getSample(0, 200))) < 1e-9, "Lookahead leaks the transient before the delay elapses");
+    require(std::abs(static_cast<double>(audio.getSample(0, 343))) < 1e-9, "Lookahead delay line is shorter than reported");
+    require(std::abs(static_cast<double>(audio.getSample(0, 344))) < 0.01, "Transient emerges before the duck reaches the floor");
+    require(std::abs(static_cast<double>(audio.getSample(0, 25900)) - 0.6) < 1e-6, "Delayed signal never emerges after lookahead");
+    p.setPlayHead(nullptr);
+    DuckerProcessor plain;
+    plain.prepareToPlay(sampleRate, 512);
+    require(plain.getLatencySamples() == 0, "Default lookahead reports latency");
+}
+
 template<typename Sample> void testDetectorFilters() {
     DuckerProcessor highPass;
     set(highPass, "trigger", 2);
@@ -241,6 +267,45 @@ template<typename Sample> void testBand() {
     require(treble(banded) > 0.36 && treble(banded) < 0.44, "Band mode ducks the treble");
     require(tone(soloed, 50, 9600, 21600) > 0.36, "Band solo removes the bass");
     require(tone(soloed, 5000, 9600, 21600) < 0.02, "Band solo leaks the treble");
+
+    // Partial bandBlend (0 < bandAmount < 1) must stay phase-coherent at bandFrequency without comb cancellation.
+    DuckerProcessor coherent;
+    Host coherentHost;
+    coherentHost.position.setIsPlaying(false);
+    coherentHost.position.setBpm(120);
+    coherent.setPlayHead(&coherentHost);
+    set(coherent, "mix", 0);
+    set(coherent, "bandOn", 0);
+    set(coherent, "bandFrequency", 150);
+    coherent.prepareToPlay(sampleRate, 960);
+    juce::MidiBuffer midi;
+    juce::AudioBuffer<Sample> warmBuf(2, 4800);
+    int wIdx = 0;
+    while (wIdx < 4800) {
+        const auto s = static_cast<Sample>(0.5 * std::sin(6.283185307179586 * 150.0 * wIdx / sampleRate));
+        warmBuf.setSample(0, wIdx, s);
+        warmBuf.setSample(1, wIdx, s);
+        ++wIdx;
+    }
+    coherent.processBlock(warmBuf, midi);
+    set(coherent, "bandOn", 1);
+    juce::AudioBuffer<Sample> transBuf(2, 960);
+    int tIdx = 0;
+    while (tIdx < 960) {
+        const auto s = static_cast<Sample>(0.5 * std::sin(6.283185307179586 * 150.0 * (4800 + tIdx) / sampleRate));
+        transBuf.setSample(0, tIdx, s);
+        transBuf.setSample(1, tIdx, s);
+        ++tIdx;
+    }
+    coherent.processBlock(transBuf, midi);
+    double midTransitionPeak = 0.0;
+    int mIdx = 320;
+    while (mIdx < 640) {
+        midTransitionPeak = std::max(midTransitionPeak, std::abs(static_cast<double>(transBuf.getSample(0, mIdx))));
+        ++mIdx;
+    }
+    require(midTransitionPeak > 0.38, "Multiband blend creates a phase comb notch at bandFrequency");
+    coherent.setPlayHead(nullptr);
 }
 template<typename Sample> void testEffectsRouting() {
     const double midGain = duck::cycleGain(duck::defaultCurve, 0.5, 1);
@@ -697,7 +762,7 @@ void testSuite(DuckerProcessor& processor, juce::AudioProcessorEditor& editor) {
 int main(int argc, char** argv) {
     juce::ScopedJuceInitialiser_GUI gui;
     try {
-        testSync<float>(); testSync<double>(); testTriggers<float>(); testTriggers<double>(); testDetectorFilters<float>(); testDetectorFilters<double>(); testBand<float>(); testBand<double>();
+        testSync<float>(); testSync<double>(); testTriggers<float>(); testTriggers<double>(); testLookahead<float>(); testLookahead<double>(); testDetectorFilters<float>(); testDetectorFilters<double>(); testBand<float>(); testBand<double>();
         testStandaloneSustain<float>(); testStandaloneSustain<double>(); testNewFxModes();
         testFxMatrix<float>(); testFxMatrix<double>();
         testEffectsRouting<float>(); testEffectsRouting<double>();

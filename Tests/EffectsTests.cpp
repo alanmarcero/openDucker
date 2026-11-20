@@ -168,6 +168,47 @@ void shortDestroyTests() {
  }
  std::cout<<"PASS Destroy during audible short tails and zero-crossing hold\n";
 }
+void dualBandReverbTests() {
+ const auto decayRatio = [](double hz) {
+  duck::Effects fx; fx.prepare(48000); duck::EffectsParameters p;
+  p.delayEnabled=false; p.reverbType=1; p.reverbSeconds=2; fx.setParameters(p);
+  double early=0, late=0;
+  for(int n=0;n<96000;++n) {
+   const double burst=n<9600?0.5*std::sin(6.283185307179586*hz*n/48000):0;
+   auto y=fx.process({burst,burst},std::abs(burst));
+   if(n>=4800&&n<14400) early+=energy(y);
+   if(n>=38400&&n<57600) late+=energy(y);
+  }
+  return late/std::max(early,1e-30);
+ };
+ const double lowDecay=decayRatio(200), highDecay=decayRatio(8000);
+ require(highDecay<lowDecay*0.5,"Reverb high frequencies do not decay faster than low frequencies");
+ std::cout<<"PASS dual-band reverb decay (LF="<<lowDecay<<", HF="<<highDecay<<")\n";
+}
+void delayLoopGuardTests() {
+ duck::Effects fx; fx.prepare(48000); auto p=delayParameters(); p.delaySeconds=.01; p.feedback=.95; fx.setParameters(p);
+ double peak=0;
+ for(int n=0;n<96000;++n) {
+  auto y=fx.process({.5,.5},.5);
+  require(std::isfinite(y.left)&&std::abs(y.left)<10,"Delay loop is unstable under DC input");
+  if(n>=72000) peak=std::max(peak,std::abs(y.left));
+ }
+ require(peak<1.6,"Delay feedback loop accumulates DC without its guard filter");
+ std::cout<<"PASS delay loop guard bounds DC accumulation (peak="<<peak<<")\n";
+}
+void destroyAntiAliasTests() {
+ duck::Effects fx; fx.prepare(48000); duck::EffectsParameters p;
+ p.delayEnabled=false; p.reverbEnabled=false; p.destroy=1; p.destroyAlways=true; fx.setParameters(p);
+ double energySum=0; int count=0;
+ for(int n=0;n<48000;++n) {
+  const double x=.2*std::sin(6.283185307179586*15000*n/48000);
+  auto y=fx.process({x,x},std::abs(x));
+  if(n>=24000) { energySum+=y.left*y.left; ++count; }
+ }
+ const double rms=std::sqrt(energySum/count);
+ require(rms<0.08,"Destroy bitcrush aliases a 15 kHz input at full level");
+ std::cout<<"PASS destroy anti-alias filtering (15 kHz RMS="<<rms<<")\n";
+}
 void monoHistoryTests() {
  duck::Effects fx; fx.prepare(48000); auto p=delayParameters(); p.delaySeconds=.2; p.feedback=.9; p.pingPong=true; fx.setParameters(p);
  double tailEnergy=0;
@@ -253,5 +294,5 @@ int main(int argc,char** argv) { try {
   else if(test=="reset-history") resetHistoryTests();
   else if(test=="serial-tail") serialTailTests();
   else require(false,"Unknown test group");
- } else { serialTailTests(); delayTests(); automationTests(); eqTests(); reverbTests(); sustainTests(); destroyTests(); shortDestroyTests(); monoHistoryTests(); resetHistoryTests(); robustnessTests(); }
+ } else { serialTailTests(); delayTests(); automationTests(); eqTests(); reverbTests(); dualBandReverbTests(); delayLoopGuardTests(); destroyAntiAliasTests(); sustainTests(); destroyTests(); shortDestroyTests(); monoHistoryTests(); resetHistoryTests(); robustnessTests(); }
  } catch(const std::exception& e) { std::cerr<<"FAIL: "<<e.what()<<'\n'; return 1; } }
