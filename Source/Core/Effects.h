@@ -46,7 +46,7 @@ private:
  struct Reverb {
   std::array<Line,8> lines;
   std::array<Line,8> diffusers;
-  std::array<double,8> lengths{}, gains{}, targetGains{}, poles{}, targetPoles{}, dampingState{}, phases{}, phaseSteps{};
+  std::array<double,8> lengths{}, gains{}, targetGains{}, hfGains{}, targetHfGains{}, poles{}, targetPoles{}, dampingState{}, phases{}, phaseSteps{};
   double diffusion=.65, highRatio=.5, depth=0;
   void prepare(double rate,int type);
   void configure(double rate,double seconds,bool immediate) noexcept;
@@ -68,6 +68,9 @@ private:
  double delaySamples=24000,oldDelaySamples=24000,tapFade=1,tapStep=0,targetDelaySamples=24000;
  double feedback=.35,pingPong=1,width=1,sustain=0,destroy=0,delayMix=1,reverbMix=1;
  double parallelMix=0;
+ std::array<double,2> loopHpIn{},loopHpOut{},loopLpState{},loopAdaaPrevX{},loopAdaaPrevF{},destroyAaIc1{},destroyAaIc2{};
+ std::array<bool,2> loopAdaaPrimed{};
+ double loopHpAlpha=1,loopLpAlpha=1;
  double envelope=0,compressionGain=1,activity=0,quietSeconds=0,tailEstimate=6;
  double destroyEnvelope=0,gainSmoothing=0,activitySmoothing=0,destroyRelease=0;
  double quietHold=.08,destroyAttackSmoothing=0;

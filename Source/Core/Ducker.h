@@ -39,8 +39,12 @@ public:
     bool synced() const noexcept { return syncActive; }
 private:
     double cycleSamples() const noexcept;
-    double sampleRate = 48000, step = 0, blockPpq = 0, bpm = 120, smoothingCoefficient = 0;
+    double sampleRate = 48000, step = 0, blockPpq = 0, bpm = 120;
+    double attackCoefficient = 0, releaseCoefficient = 0, smoothingMs = 0;
     double gain = 1, lastPhase = 0, elapsed = 0;
+    double transitionStartLog = 0, legatoStart = 1;
+    int transitionElapsed = 0, transitionTotal = 0, legatoElapsed = 0, legatoTotal = 0;
+    bool transitioning = false;
     Parameters parameters;
     bool syncActive = false, isRunning = false;
     int offset = 0;

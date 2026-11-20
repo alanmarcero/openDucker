@@ -79,7 +79,8 @@ void Effects::Reverb::prepare(double rate,int type) {
  for(size_t i=0;i<8;++i) {
   lengths[i]=std::max(1.0,std::round(delays[type][i]*rate));
   lines[i].samples.assign(static_cast<size_t>(lengths[i]+depth)+2,0);
-  phaseSteps[i]=2*pi*(.1+.07*static_cast<double>(i))/rate;
+  // Incommensurate modulation rates keep the eight lines decorrelated.
+  phaseSteps[i]=2*pi*(.11+.047*static_cast<double>(i)+.019*static_cast<double>((i*3)%4))/rate;
   diffusers[i].samples.assign(static_cast<size_t>(std::max(1.0,std::round(diff[type][i]*rate))),0);
  }
  diffusion=type==0?.6:type==1?.7:.75;
@@ -89,11 +90,11 @@ void Effects::Reverb::prepare(double rate,int type) {
 void Effects::Reverb::configure(double rate,double seconds,bool immediate) noexcept {
  for(size_t i=0;i<8;++i) {
   const double loss=-3*(lengths[i]+.5*depth)/(rate*seconds);
-  targetGains[i]=std::pow(10.0,loss);
-  // DC decays over Length; Nyquist decays over highRatio times Length.
-  const double ratio=std::pow(10.0,loss*(1/highRatio-1));
-  targetPoles[i]=(1-ratio)/(1+ratio);
-  if(immediate) { gains[i]=targetGains[i]; poles[i]=targetPoles[i]; }
+  // Dual-band decay: lows decay over Length, highs over highRatio times Length.
+  targetGains[i]=std::pow(10.0,loss*.88);
+  targetHfGains[i]=std::pow(10.0,loss/std::max(.1,highRatio));
+  targetPoles[i]=std::exp(-2*pi*900/rate);
+  if(immediate) { gains[i]=targetGains[i]; hfGains[i]=targetHfGains[i]; poles[i]=targetPoles[i]; }
  }
 }
 Stereo Effects::Reverb::process(Stereo input,double smoothing) noexcept {
@@ -110,9 +111,9 @@ Stereo Effects::Reverb::process(Stereo input,double smoothing) noexcept {
   // Delay modulation prevents fixed resonant modes in long tails.
   const double x=lines[i].read(lengths[i]+.5*depth*(1+std::sin(phases[i])));
   phases[i]+=phaseSteps[i]; if(phases[i]>2*pi) phases[i]-=2*pi;
-  gains[i]=lerp(gains[i],targetGains[i],smoothing); poles[i]=lerp(poles[i],targetPoles[i],smoothing);
+  gains[i]=lerp(gains[i],targetGains[i],smoothing); hfGains[i]=lerp(hfGains[i],targetHfGains[i],smoothing); poles[i]=lerp(poles[i],targetPoles[i],smoothing);
   dampingState[i]=clean(lerp(x,dampingState[i],poles[i]));
-  y[i]=gains[i]*dampingState[i]; sum+=y[i];
+  y[i]=gains[i]*dampingState[i]+hfGains[i]*(x-dampingState[i]); sum+=y[i];
   left+=x; right+=x*rightSigns[i];
  }
  const double mid=(diffuse[0]+diffuse[1])*.5,side=(diffuse[0]-diffuse[1])*.5;
@@ -124,7 +125,7 @@ Stereo Effects::Reverb::process(Stereo input,double smoothing) noexcept {
  return {left*.3535533905932738,right*.3535533905932738};
 }
 void Effects::Reverb::clear() noexcept {
- for(auto& l:lines) l.clear(); for(auto& l:diffusers) l.clear(); dampingState={}; gains=targetGains; poles=targetPoles;
+ for(auto& l:lines) l.clear(); for(auto& l:diffusers) l.clear(); dampingState={}; gains=targetGains; hfGains=targetHfGains; poles=targetPoles;
  for(size_t i=0;i<8;++i) phases[i]=pi*.25*static_cast<double>(i);
 }
 
@@ -136,6 +137,7 @@ void Effects::prepare(double sampleRate) {
  smoothing=1-std::exp(-1/(rate*.02)); tapStep=1/(rate*.03);
  gainSmoothing=1-std::exp(-1/(rate*.003)); activitySmoothing=1-std::exp(-1/(rate*.01)); destroyRelease=std::exp(-1/(rate*.03));
  detectorAttack=std::exp(-1/(rate*.001)); detectorRelease=std::exp(-1/(rate*.12));
+ loopHpAlpha=1/(1+2*pi*80/rate); loopLpAlpha=1-std::exp(-2*pi*7000/rate);
  prepared=true; initialized=false; setParameters(parameters); reset();
 }
 void Effects::setParameters(const EffectsParameters& p) noexcept {
@@ -181,6 +183,7 @@ void Effects::reset() noexcept {
  for(auto& r:reverbs) r.clear();
  delayBass.clear(); delayTreble.clear(); reverbBass.clear(); reverbTreble.clear();
  delayPosition=stutterPosition=0; clock=0; held={}; envelope=destroyEnvelope=activity=quietSeconds=0; compressionGain=1;
+ loopHpIn=loopHpOut=loopLpState=loopAdaaPrevX=loopAdaaPrevF=destroyAaIc1=destroyAaIc2={}; loopAdaaPrimed={};
  sourceActive=phraseSeen=false; initialized=false; setParameters(parameters);
 }
 double Effects::delayRead(const std::vector<double>& buffer,double samples) const noexcept {
@@ -214,13 +217,32 @@ Stereo Effects::delay(Stereo input) noexcept {
  const Stereo injection{lerp(mid,mid+side,pingPong),lerp(mid,-side,pingPong)};
  const double fbL = feedback * lerp(delayed.left, delayed.right, pingPong);
  const double fbR = feedback * lerp(delayed.right, delayed.left, pingPong);
- const auto softLimit = [](double x) noexcept {
-  const double ax = std::abs(x);
-  if (ax <= 1.0) return x;
-  return (x > 0 ? 1.0 : -1.0) * (1.0 + std::tanh(ax - 1.0));
+ // Loop stabilization stays transparent below unity; past it, a bandpass
+ // guard (80 Hz-7 kHz) and an ADAA tanh saturator bound the feedback path.
+ const auto guardLoop = [this](double fb, size_t ch) noexcept {
+  if (std::abs(fb) <= 1.0) return fb;
+  loopHpOut[ch] = loopHpAlpha * (loopHpOut[ch] + fb - loopHpIn[ch]);
+  loopHpIn[ch] = fb;
+  loopLpState[ch] += loopLpAlpha * (loopHpOut[ch] - loopLpState[ch]);
+  const double x = loopLpState[ch];
+  const auto antiderivative = [](double v) noexcept {
+   const double a = std::abs(v);
+   return a + std::log1p(std::exp(-2 * a)) - 0.6931471805599453;
+  };
+  const double current = antiderivative(x);
+  double out = std::tanh(x);
+  if (loopAdaaPrimed[ch]) {
+   const double delta = x - loopAdaaPrevX[ch];
+   out = std::abs(delta) < 1e-4 ? std::tanh((x + loopAdaaPrevX[ch]) * .5)
+                                : std::clamp((current - loopAdaaPrevF[ch]) / delta, -1.0, 1.0);
+  }
+  loopAdaaPrimed[ch] = true;
+  loopAdaaPrevX[ch] = x;
+  loopAdaaPrevF[ch] = current;
+  return out;
  };
- delayLeft[delayPosition]=clean(injection.left+softLimit(fbL));
- delayRight[delayPosition]=clean(injection.right+softLimit(fbR));
+ delayLeft[delayPosition]=clean(injection.left+guardLoop(fbL,0));
+ delayRight[delayPosition]=clean(injection.right+guardLoop(fbR,1));
  if(delayValid<delayLeft.size()) ++delayValid;
  if(++delayPosition==delayLeft.size()) delayPosition=0;
  const auto equalized=delayTreble.process(delayBass.process(delayed,smoothing),smoothing);
@@ -262,15 +284,32 @@ Stereo Effects::distort(Stereo input,double sourcePeak) noexcept {
  if(activity<1e-12) activity=0;
  const double peak=std::max(std::abs(input.left),std::abs(input.right));
  destroyEnvelope=clean(std::max(peak,destroyEnvelope*destroyRelease));
- stutter[stutterPosition]=input;
+ // Pre-decimation ZDF SVF low-pass keeps near-Nyquist energy out of the crush
+ // and out of the stutter history it replays. Its cutoff tracks the current
+ // sample-hold decimation rate, so held steps cannot alias tones back down.
+ const int aaHold=1+static_cast<int>(23*activity);
+ const double aaG=std::tan(pi*.45/aaHold);
+ const auto antiAlias = [this,aaG](double x, size_t ch) noexcept {
+  const double g=aaG, k=1.4142135623730951;
+  const double a1=1/(1+g*(g+k)), a2=g*a1, a3=g*a2;
+  const double v3=x-destroyAaIc2[ch];
+  const double v1=a1*destroyAaIc1[ch]+a2*v3;
+  const double v2=destroyAaIc2[ch]+a2*destroyAaIc1[ch]+a3*v3;
+  destroyAaIc1[ch]=2*v1-destroyAaIc1[ch];
+  destroyAaIc2[ch]=2*v2-destroyAaIc2[ch];
+  return v2;
+ };
+ const Stereo filtered{antiAlias(input.left,0),antiAlias(input.right,1)};
+ stutter[stutterPosition]=activity>0?filtered:input;
  if(stutterValid<stutter.size()) ++stutterValid;
  if(activity>0&&destroyEnvelope>1e-20) {
   const double scale=std::max(1e-12,destroyEnvelope),drive=1+12*activity;
   const int bits=static_cast<int>(16-12*activity),hold=1+static_cast<int>(23*activity);
   const double steps=static_cast<double>(1<<bits);
+  const double filteredLeft=filtered.left, filteredRight=filtered.right;
   if(clock%static_cast<uint64_t>(hold)==0) {
    const auto crush=[&](double x) { return std::round(std::tanh(x/scale*drive)/std::tanh(drive)*steps)/steps*scale; };
-   held={crush(input.left),crush(input.right)};
+   held={crush(filteredLeft),crush(filteredRight)};
   }
   // Bound replay to the current decaying envelope; stale samples can never sustain a tail forever.
   const double bound=scale*1.5;
