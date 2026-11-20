@@ -1,5 +1,7 @@
-# openDucker 2.7.1
+# openDucker 2.8.0
 
-Draws the sidechain, or the main input when no sidechain is connected, behind the duck curve and locks that waveform to the host cycle. Adds 16 factory patches, undo/redo, A/B compare, and user presets saved under Documents/Alan Marcero/openDucker/Presets. The project license is MIT. Tag releases start again: the release workflow grants the build workflow contents write, which GitHub requires before any job runs.
+- **Smooth Ballistics & Curves:** Eliminated C0 derivative corners in ducking curves and refined attack/recovery ballistics with click-free legato retriggering.
+- **Phase-Coherent Crossover & Detection:** Upgraded to a flat-sum Linkwitz-Riley crossover without zipper noise, and added 24 dB/oct sidechain filtering with improved transient detection on dense bass material.
+- **True Lookahead & FX Stabilization:** Added latency-reported 3 ms lookahead delay, frequency-dependent reverb damping, DC-guarded delay feedback, and antialiased Destroy bitcrushing.
 
 ![openDucker native editor](https://raw.githubusercontent.com/alanmarcero/openDucker/main/docs/screenshots/preview.png)
