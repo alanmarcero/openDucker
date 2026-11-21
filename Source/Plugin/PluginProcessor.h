@@ -89,7 +89,6 @@ private:
         ReverbLength, ReverbWidth, ReverbBass, ReverbTreble, Sustain, Destroy, Output, FxFlow, DestroyMode, Lookahead, FxCount };
     struct SessionSnapshot {
         juce::ValueTree parameters;
-        juce::ValueTree ab;
         int program = 0;
         juce::String presetKey;
         bool presetEdited = false;

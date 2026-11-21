@@ -860,6 +860,31 @@ void testPresetNavigation(DuckerProcessor& processor, juce::AudioProcessorEditor
     processor.setCurrentProgram(0);
 }
 
+void testSlotUndo() {
+    DuckerProcessor p;
+    auto* mix = p.parameters.getParameter("mix");
+    const auto edit = [mix](float value) {
+        mix->beginChangeGesture();
+        mix->setValueNotifyingHost(mix->convertTo0to1(value));
+        mix->endChangeGesture();
+    };
+    edit(40);
+    p.selectSlotB();
+    require(!p.canUndo(), "Slot B can undo an edit from slot A");
+    edit(70);
+    p.selectSlotA();
+    p.undoEdit();
+    require(std::abs(get(p, "mix") - 100.0f) < 0.2f, "Slot A does not undo its own edit");
+    p.selectSlotB();
+    require(p.canUndo(), "Switching slots drops slot B's history");
+    p.copyAToB();
+    require(!p.canUndo(), "Copying into slot B keeps its old history");
+    edit(30);
+    p.copyBToA();
+    p.selectSlotA();
+    require(!p.canUndo() && std::abs(get(p, "mix") - 30.0f) < 0.2f, "Copying into slot A keeps its old history");
+}
+
 void testEditorRecall() {
     DuckerProcessor first;
     {
@@ -1031,6 +1056,7 @@ int main(int argc, char** argv) {
         testEqDetents(p, *editor);
         testSuite(p, *editor);
         testPresetNavigation(p, *editor);
+        testSlotUndo();
         testEditorRecall();
         testTriggerFeedback();
         {

@@ -22,6 +22,9 @@ public:
     bool canUndo() const;
     bool canRedo() const;
     void clearHistory();
+    // Each A/B slot keeps its own history: 0 is A, 1 is B.
+    void selectHistory(size_t slot);
+    void clearHistory(size_t slot);
     // Called after each recorded parameter edit.
     std::function<void()> onEdit;
 
@@ -33,7 +36,8 @@ private:
     class ValueAction;
     juce::AudioProcessor& processor;
     juce::AudioProcessorValueTreeState& state;
-    juce::UndoManager undo;
+    std::array<juce::UndoManager, 2> histories;
+    size_t activeHistory = 0;
     int suspended = 0;
     bool applying = false;
     bool gestureOpen = false;

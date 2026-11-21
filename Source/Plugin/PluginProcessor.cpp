@@ -442,14 +442,12 @@ private:
 };
 
 DuckerProcessor::SessionSnapshot DuckerProcessor::snap() {
-    abCompare.captureActive();
-    return {parameters.copyState(), abCompare.toTree(), currentProgram, presetLibrary.activeKey(), presetLibrary.isEdited()};
+    return {parameters.copyState(), currentProgram, presetLibrary.activeKey(), presetLibrary.isEdited()};
 }
 
 void DuckerProcessor::restoreSnapshot(const SessionSnapshot& snapshot) {
     parameterUndo.suspend();
     parameters.replaceState(snapshot.parameters.createCopy());
-    abCompare.readTree(snapshot.ab);
     currentProgram = juce::jlimit(0, std::max(0, getNumPrograms() - 1), snapshot.program);
     presetLibrary.setActiveKey(snapshot.presetKey, snapshot.presetEdited);
     parameterUndo.resume();
@@ -459,7 +457,7 @@ void DuckerProcessor::restoreSnapshot(const SessionSnapshot& snapshot) {
 void DuckerProcessor::pushUndo(const juce::String& name, SessionSnapshot before, SessionSnapshot after) {
     if(parameterUndo.isSuspended() || parameterUndo.isApplying() || !suite::onMessageThread()) return;
     if(before.program == after.program && before.presetKey == after.presetKey
-        && before.parameters.isEquivalentTo(after.parameters) && before.ab.isEquivalentTo(after.ab)) return;
+        && before.parameters.isEquivalentTo(after.parameters)) return;
     parameterUndo.beginTransaction(name);
     parameterUndo.perform(new SnapshotAction(*this, std::move(before), std::move(after)));
 }
@@ -478,31 +476,26 @@ bool DuckerProcessor::canUndo() const { return parameterUndo.canUndo(); }
 bool DuckerProcessor::canRedo() const { return parameterUndo.canRedo(); }
 bool DuckerProcessor::slotIsA() const { return abCompare.isA(); }
 
+// Switching slots swaps undo histories. Copying into a slot clears that slot's history.
 void DuckerProcessor::selectSlotA() {
-    if(abCompare.isA()) return;
-    const auto before = snap();
-    abCompare.selectA();
+    if(!abCompare.selectA()) return;
+    parameterUndo.selectHistory(0);
     resetEffects.store(true);
-    pushUndo("Slot A", before, snap());
 }
 void DuckerProcessor::selectSlotB() {
-    if(!abCompare.isA()) return;
-    const auto before = snap();
-    abCompare.selectB();
+    if(!abCompare.selectB()) return;
+    parameterUndo.selectHistory(1);
     resetEffects.store(true);
-    pushUndo("Slot B", before, snap());
 }
 void DuckerProcessor::copyAToB() {
-    const auto before = snap();
     abCompare.copyAToB();
+    parameterUndo.clearHistory(1);
     if(!abCompare.isA()) resetEffects.store(true);
-    pushUndo("Copy A to B", before, snap());
 }
 void DuckerProcessor::copyBToA() {
-    const auto before = snap();
     abCompare.copyBToA();
+    parameterUndo.clearHistory(0);
     if(abCompare.isA()) resetEffects.store(true);
-    pushUndo("Copy B to A", before, snap());
 }
 
 bool DuckerProcessor::loadPreset(const juce::String& key) {
@@ -573,6 +566,7 @@ void DuckerProcessor::setStateInformation(const void* data, int size) {
         else abCompare.resetBothFromCurrent();
         if(hasProgram) currentProgram = juce::jlimit(0, std::max(0, getNumPrograms() - 1), program);
         parameterUndo.clearHistory();
+        parameterUndo.selectHistory(abCompare.isA() ? 0 : 1);
         resetEffects.store(true);
     }
 }

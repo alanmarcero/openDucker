@@ -25,7 +25,7 @@ All of these plugins are in beta. The macOS and Linux builds are not up to date,
 - **Effects routing:** Choose whether to duck the dry signal, effects, or both. Place ducking before or after the effects. Route Delay and Reverb in series or parallel.
 - **Display and menu:** The curve view draws the incoming audio behind the duck curve and keeps it locked to the host cycle. A connected sidechain is shown there; otherwise the main input is shown. Output level stays on the same grid. Hide or show the effects rack while it continues to process audio. Smoothing softens every duck: Off, Low, Medium, or High. The menu can reset slope and shift.
 - **Presets:** Sixteen factory patches are in the DAW program list and the preset browser. Factory patches stay read-only. Save, rename, and delete your own presets in Documents/Alan Marcero/openDucker/Presets. Search the list and mark favorites. The arrows beside the preset name step through the list, and an asterisk marks unsaved edits.
-- **Undo and compare:** Undo and redo parameter edits with the buttons, or with Cmd/Ctrl+Z and Shift+Cmd/Ctrl+Z. Slots A and B each hold a full patch. Copy either slot into the other.
+- **Undo and compare:** Undo and redo parameter edits with the buttons, or with Cmd/Ctrl+Z and Shift+Cmd/Ctrl+Z. Slots A and B each hold a full patch with its own undo history. Copying a slot into the other clears the target slot's history.
 
 Sustain raises quieter parts and controls peaks. Destroy offers Tail and Always modes and adds bitcrush, stutter, and drive. MIDI and Audio triggers can work while playback is stopped.
 

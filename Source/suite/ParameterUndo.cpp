@@ -31,15 +31,17 @@ ParameterUndo::~ParameterUndo() {
 void ParameterUndo::suspend() noexcept { ++suspended; }
 void ParameterUndo::resume() noexcept { if(suspended > 0) --suspended; }
 
-void ParameterUndo::beginTransaction(const juce::String& name) { undo.beginNewTransaction(name); }
+void ParameterUndo::beginTransaction(const juce::String& name) { histories[activeHistory].beginNewTransaction(name); }
 
-bool ParameterUndo::perform(juce::UndoableAction* action) { return undo.perform(action); }
+bool ParameterUndo::perform(juce::UndoableAction* action) { return histories[activeHistory].perform(action); }
 
-bool ParameterUndo::undoStep() { return onMessageThread() && undo.undo(); }
-bool ParameterUndo::redoStep() { return onMessageThread() && undo.redo(); }
-bool ParameterUndo::canUndo() const { return undo.canUndo(); }
-bool ParameterUndo::canRedo() const { return undo.canRedo(); }
-void ParameterUndo::clearHistory() { undo.clearUndoHistory(); }
+bool ParameterUndo::undoStep() { return onMessageThread() && histories[activeHistory].undo(); }
+bool ParameterUndo::redoStep() { return onMessageThread() && histories[activeHistory].redo(); }
+bool ParameterUndo::canUndo() const { return histories[activeHistory].canUndo(); }
+bool ParameterUndo::canRedo() const { return histories[activeHistory].canRedo(); }
+void ParameterUndo::clearHistory() { for(auto& history : histories) history.clearUndoHistory(); }
+void ParameterUndo::selectHistory(size_t slot) { activeHistory = slot; }
+void ParameterUndo::clearHistory(size_t slot) { histories[slot].clearUndoHistory(); }
 
 void ParameterUndo::applyNormalised(const juce::String& id, float normalised) {
     const bool wasApplying = applying;
@@ -65,8 +67,8 @@ void ParameterUndo::parameterGestureChanged(int parameterIndex, bool gestureIsSt
     gestureOpen = false;
     const float end = parameter->getValue();
     if(std::abs(end - gestureStart) < 1.0e-6f) return;
-    undo.beginNewTransaction(parameter->getName(48));
-    undo.perform(new ValueAction(*this, gestureId, gestureStart, end));
+    histories[activeHistory].beginNewTransaction(parameter->getName(48));
+    histories[activeHistory].perform(new ValueAction(*this, gestureId, gestureStart, end));
     if(onEdit) onEdit();
 }
 }
