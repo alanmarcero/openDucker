@@ -150,29 +150,15 @@ void DuckLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int widt
 }
 
 void DuckLookAndFeel::drawLinearSlider(juce::Graphics& g, int x, int y, int width, int height, float position, float, float,
-    juce::Slider::SliderStyle style, juce::Slider& slider) {
+    juce::Slider::SliderStyle, juce::Slider& slider) {
     const auto bounds = juce::Rectangle<float>(static_cast<float>(x), static_cast<float>(y), static_cast<float>(width), static_cast<float>(height));
-    if(style == juce::Slider::LinearBar) {
-        g.setColour(look::panel);
-        g.fillRoundedRectangle(bounds, 4);
-        g.setColour(look::mint.withAlpha(0.22f));
-        g.fillRoundedRectangle(bounds.withRight(std::max(bounds.getX() + 4, position)), 4);
-        g.setColour(look::muted.withAlpha(0.3f));
-        g.drawRoundedRectangle(bounds, 4, 1);
-        drawText(g, slider.getName() + "  " + slider.getTextFromValue(slider.getValue()), bounds, bounds.getHeight() * 0.42f, look::paper, juce::Justification::centred, true);
-        return;
-    }
-    const float trackHeight = bounds.getHeight() * 0.55f;
-    const auto track = bounds.withSizeKeepingCentre(bounds.getWidth(), trackHeight);
-    g.setColour(look::panel.darker(0.3f));
-    g.fillRoundedRectangle(track, trackHeight * 0.5f);
-    g.setColour(look::mint);
-    g.fillRoundedRectangle(track.withRight(position), trackHeight * 0.5f);
-    const float thumb = bounds.getHeight();
-    g.setColour(look::panel.brighter(0.3f));
-    g.fillEllipse(juce::Rectangle<float>(thumb, thumb).withCentre({position, bounds.getCentreY()}));
-    g.setColour(look::yellow);
-    g.fillEllipse(juce::Rectangle<float>(thumb * 0.4f, thumb * 0.4f).withCentre({position, bounds.getCentreY()}));
+    g.setColour(look::panel);
+    g.fillRoundedRectangle(bounds, 4);
+    g.setColour(look::mint.withAlpha(0.22f));
+    g.fillRoundedRectangle(bounds.withRight(std::max(bounds.getX() + 4, position)), 4);
+    g.setColour(look::muted.withAlpha(0.3f));
+    g.drawRoundedRectangle(bounds, 4, 1);
+    drawText(g, slider.getName() + "  " + slider.getTextFromValue(slider.getValue()), bounds, bounds.getHeight() * 0.42f, look::paper, juce::Justification::centred, true);
 }
 
 void DuckLookAndFeel::drawButtonBackground(juce::Graphics& g, juce::Button& button, const juce::Colour&, bool over, bool down) {
@@ -470,8 +456,7 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
     content.addAndMakeVisible(mix);
     mixAttachment = std::make_unique<SliderAttachment>(p.parameters, "mix", mix);
 
-    configureBar(band, "bandFrequency", "Band", "Band split frequency. With BAND on, only frequencies below this cutoff are ducked.");
-    band.setSliderStyle(juce::Slider::LinearHorizontal); band.setDoubleClickReturnValue(true, 150);
+    configureBar(band, "bandFrequency", "Band", "Band split frequency. With Low band on, only frequencies below this point duck.");
     configureBar(shift, "shift", "Shift", "Offset the curve against the beat. In MIDI and Audio modes this delays the curve after each trigger.");
     configureBar(tension, "tension", "Tension", "Warp the active ducking curve between snappy concave (-100%) and tight hold (+100%).");
     tension.setDoubleClickReturnValue(true, 0);
@@ -640,14 +625,14 @@ void DuckerEditor::resized() {
     };
     suiteBar.setBounds(12, 4, 976, 40);
 
-    // Left column: DJ Duck is at y=56..240, Mix knob at y=244..424, Band & FX toggle section at y=430..538
-    mix.setBounds(area(70, 244, 204, 180));
-    bandButton.setBounds(area(22, 430, 80, 40));
-    solo.setBounds(area(106, 430, 40, 40));
-    pushItButton.setBounds(area(150, 430, 90, 40));
-    effectsToggle.setBounds(area(244, 430, 86, 40));
-    band.setBounds(area(22, 474, 204, 24));
-    bandSlope.setBounds(area(232, 498, 98, 40));
+    // Left column: Mix, the low-band group, then Audition and Hide FX.
+    mix.setBounds(area(70, 244, 204, 154));
+    bandButton.setBounds(area(22, 404, 110, 40));
+    solo.setBounds(area(136, 404, 40, 40));
+    bandSlope.setBounds(area(180, 404, 152, 40));
+    band.setBounds(area(22, 450, 310, 40));
+    pushItButton.setBounds(area(22, 496, 153, 40));
+    effectsToggle.setBounds(area(179, 496, 153, 40));
 
     // Right column
     for(size_t i = 0; i < rateButtons.size(); ++i) rateButtons[i].setBounds(area(354 + static_cast<float>(i) * 64, 8, 60, 40));

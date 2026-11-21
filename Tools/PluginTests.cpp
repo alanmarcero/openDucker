@@ -577,6 +577,12 @@ void testControls(DuckerProcessor& p, juce::AudioProcessorEditor& editor) {
     require(get(p, "bandSolo") == 1, "Band solo disconnected");
     control<juce::Slider>(editor, "bandFrequency").setValue(300, juce::sendNotificationSync);
     require(std::abs(get(p, "bandFrequency") - 300) < 1, "Band slider disconnected");
+    auto& band = control<juce::Slider>(editor, "bandFrequency");
+    require(band.getSliderStyle() == juce::Slider::LinearBar && band.getTextFromValue(150) == "150 Hz", "The band split is not a named bar");
+    const auto bandGroup = control<juce::Component>(editor, "band").getBounds().getUnion(control<juce::Component>(editor, "solo").getBounds())
+        .getUnion(band.getBounds()).getUnion(control<juce::Component>(editor, "bandSlope").getBounds());
+    require(!bandGroup.intersects(control<juce::Component>(editor, "pushIt").getBounds())
+        && !bandGroup.intersects(control<juce::Component>(editor, "effectsToggle").getBounds()), "The band controls are not grouped");
     control<juce::ComboBox>(editor, "bandSlope").setSelectedId(3, juce::sendNotificationSync);
     require(std::abs(get(p, "bandSlope") - 2) < 0.01f, "Band slope selector disconnected");
     control<juce::Slider>(editor, "shift").setValue(25, juce::sendNotificationSync);
