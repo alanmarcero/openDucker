@@ -551,9 +551,9 @@ void testEffectsControls(DuckerProcessor& p, juce::AudioProcessorEditor& editor)
         }
     }
     auto* target = dynamic_cast<juce::ComboBox*>(find(editor, "duckTarget"));
-    auto* position = find(editor, "duckPosition"); target->setSelectedId(1, juce::sendNotificationSync);
-    require(!position->isEnabled(), "Dry-only leaves meaningless position switch enabled");
-    target->setSelectedId(3, juce::sendNotificationSync); require(position->isEnabled(), "Both does not restore position switch");
+    auto* position = find(editor, "duckPosition"); set(p, "fxEnabled", 1); target->setSelectedId(1, juce::sendNotificationSync);
+    require(position->isEnabled() && position->getAlpha() < 0.5f, "Dry-only does not dim the position switch, or locks it");
+    target->setSelectedId(3, juce::sendNotificationSync); require(position->getAlpha() > 0.99f, "Both does not restore the position switch");
     for(const auto* id : {"fxEnabled", "delayEnabled", "reverbEnabled"}) {
         auto* button = dynamic_cast<juce::TextButton*>(find(editor, id)); require(button != nullptr, "Effects switch missing");
         button->setToggleState(false, juce::sendNotificationSync); require(p.parameters.getRawParameterValue(id)->load() < 0.5f, "Effect cannot turn off");
@@ -563,6 +563,23 @@ void testEffectsControls(DuckerProcessor& p, juce::AudioProcessorEditor& editor)
     toggle->onClick(); require(editor.getHeight() == 596 && !find(editor, "reverbType")->isShowing(), "Effects panel does not collapse");
     require(p.parameters.getRawParameterValue("fxEnabled")->load() > 0.5f, "Collapsing panel disables audio");
     toggle->onClick(); require(editor.getHeight() == 804, "Effects panel does not expand");
+    set(p, "fxEnabled", 0);
+    require(find(editor, "delayEnabled")->getAlpha() < 0.5f && find(editor, "delayFeedback")->getAlpha() < 0.5f && find(editor, "delayFeedback")->isEnabled()
+        && find(editor, "output")->getAlpha() > 0.99f, "FX off leaves the rack bright, locks it, or dims Output");
+    set(p, "fxEnabled", 1);
+    set(p, "trigger", 0); set(p, "bandOn", 0); set(p, "detectorMonitor", 0);
+    require(find(editor, "threshold")->getAlpha() < 0.5f && find(editor, "threshold")->isEnabled() && find(editor, "retrigger")->getAlpha() < 0.5f
+        && find(editor, "detectorHpf")->getAlpha() < 0.5f && find(editor, "bandFrequency")->getAlpha() < 0.5f, "Ignored controls look live or are locked");
+    set(p, "trigger", 2); set(p, "bandOn", 1);
+    require(find(editor, "threshold")->getAlpha() > 0.99f && find(editor, "retrigger")->getAlpha() > 0.99f && find(editor, "detectorHpf")->getAlpha() > 0.99f
+        && find(editor, "bandFrequency")->getAlpha() > 0.99f, "Live controls stay dimmed");
+    set(p, "trigger", 0); set(p, "bandOn", 0);
+    auto& undo = control<juce::Button>(editor, "undo");
+    undo.setEnabled(true);
+    const auto enabledLook = undo.createComponentSnapshot(undo.getLocalBounds());
+    undo.setEnabled(false);
+    require(changedPixels(enabledLook, undo.createComponentSnapshot(undo.getLocalBounds()), undo.getLocalBounds()) > 50, "Disabled buttons draw like enabled ones");
+    undo.setEnabled(p.canUndo());
 }
 void testControls(DuckerProcessor& p, juce::AudioProcessorEditor& editor) {
     auto& mix = control<juce::Slider>(editor, "mix");

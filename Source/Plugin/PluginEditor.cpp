@@ -27,6 +27,18 @@ void glow(juce::Graphics& g, juce::Rectangle<float> bounds, juce::Colour colour)
     g.fillEllipse(centre.x - radius, centre.y - radius, radius * 2, radius * 2);
 }
 
+// Draws a disabled control at the inactive alpha.
+class DisabledDimmer {
+public:
+    DisabledDimmer(juce::Graphics& graphics, const juce::Component& control) : g(graphics), dimmed(!control.isEnabled()) {
+        if(dimmed) g.beginTransparencyLayer(look::inactiveAlpha);
+    }
+    ~DisabledDimmer() { if(dimmed) g.endTransparencyLayer(); }
+private:
+    juce::Graphics& g;
+    const bool dimmed;
+};
+
 juce::Path curvePath(int curve, juce::Rectangle<float> area, int points) {
     juce::Path path;
     for(int i = 0; i <= points; ++i) {
@@ -57,6 +69,7 @@ DuckLookAndFeel::DuckLookAndFeel() {
 }
 
 void DuckLookAndFeel::drawComboBox(juce::Graphics& g, int width, int height, bool, int, int, int, int, juce::ComboBox& box) {
+    const DisabledDimmer dimmer(g, box);
     const juce::Rectangle<float> bounds {0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height)};
     const float corner = bounds.getHeight() * 0.25f;
     g.setColour(look::panel);
@@ -76,6 +89,7 @@ void DuckLookAndFeel::drawComboBox(juce::Graphics& g, int width, int height, boo
 }
 
 void DuckLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int width, int height, float value, float start, float end, juce::Slider& slider) {
+    const DisabledDimmer dimmer(g, slider);
     if(slider.getComponentID() != "mix") {
         const float s = static_cast<float>(height) / 104.0f;
         const juce::Point<float> centre {static_cast<float>(x) + static_cast<float>(width) * 0.5f, static_cast<float>(y) + 28.0f * s};
@@ -153,6 +167,7 @@ void DuckLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int widt
 
 void DuckLookAndFeel::drawLinearSlider(juce::Graphics& g, int x, int y, int width, int height, float position, float, float,
     juce::Slider::SliderStyle, juce::Slider& slider) {
+    const DisabledDimmer dimmer(g, slider);
     const auto bounds = juce::Rectangle<float>(static_cast<float>(x), static_cast<float>(y), static_cast<float>(width), static_cast<float>(height));
     g.setColour(look::panel);
     g.fillRoundedRectangle(bounds, 4);
@@ -171,6 +186,7 @@ void DuckLookAndFeel::drawLinearSlider(juce::Graphics& g, int x, int y, int widt
 }
 
 void DuckLookAndFeel::drawButtonBackground(juce::Graphics& g, juce::Button& button, const juce::Colour&, bool over, bool down) {
+    const DisabledDimmer dimmer(g, button);
     const auto bounds = button.getLocalBounds().toFloat();
     if(button.getToggleState()) {
         g.setColour(look::yellow);
@@ -184,6 +200,7 @@ void DuckLookAndFeel::drawButtonBackground(juce::Graphics& g, juce::Button& butt
 }
 
 void DuckLookAndFeel::drawButtonText(juce::Graphics& g, juce::TextButton& button, bool, bool) {
+    const DisabledDimmer dimmer(g, button);
     drawText(g, button.getButtonText(), button.getLocalBounds().toFloat(), static_cast<float>(button.getHeight()) * 0.37f,
         button.getToggleState() ? look::ink : look::paper);
 }
@@ -201,6 +218,7 @@ juce::Label* DuckLookAndFeel::createSliderTextBox(juce::Slider& slider) {
 }
 
 void GlyphButton::paintButton(juce::Graphics& g, bool over, bool down) {
+    const DisabledDimmer dimmer(g, *this);
     const auto bounds = getLocalBounds().toFloat();
     const bool arrow = glyph == Glyph::Previous || glyph == Glyph::Next || glyph == Glyph::PreviousBank || glyph == Glyph::NextBank;
     const bool lit = getToggleState() && !arrow;
@@ -268,6 +286,7 @@ void GlyphButton::paintButton(juce::Graphics& g, bool over, bool down) {
 }
 
 void CurveButton::paintButton(juce::Graphics& g, bool over, bool down) {
+    const DisabledDimmer dimmer(g, *this);
     const auto bounds = getLocalBounds().toFloat();
     const bool selected = getToggleState();
     g.setColour(selected ? look::yellow : (over || down ? look::panelHover : look::panel));
@@ -534,7 +553,7 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
     tension.setDoubleClickReturnValue(true, 0);
     configureBar(floor, "floor", "Floor", "Minimum gain floor at the bottom of the ducking curve (0% = full mute, 100% = no ducking).");
     floor.setDoubleClickReturnValue(true, 0);
-    configureBar(threshold, "threshold", "Threshold", "Audio trigger level. Uses the sidechain input when connected, otherwise the main input.");
+    configureBar(threshold, "threshold", "Threshold", "Audio trigger level. Uses the sidechain input when connected, otherwise the main input. Select Audio to use it.");
     threshold.setDoubleClickReturnValue(true, -24);
     configureBar(smoothing, "smoothing", "Smoothing", "Softens the gain changes of every duck: Off, Low (1 ms), Medium (3 ms) or High (8 ms).");
     configureBar(lookahead, "lookahead", "Lookahead", "Delays the audio by up to 5 ms so each duck reaches its floor before the transient. "
@@ -542,11 +561,11 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
     bandSlope.setComponentID("bandSlope");
     bandSlope.setName("Band slope");
     bandSlope.addItemList({"12 dB/oct", "24 dB/oct", "48 dB/oct"}, 1);
-    bandSlope.setTooltip("Crossover filter steepness for Low Band ducking mode.");
+    bandSlope.setTooltip("Crossover filter steepness for Low band ducking. Turn on Low band to use it.");
     content.addAndMakeVisible(bandSlope);
     bandSlopeAttachment = std::make_unique<ComboBoxAttachment>(p.parameters, "bandSlope", bandSlope);
-    configureBar(detectorHpf, "detectorHpf", "Detector HPF", "High-pass filter on the audio-trigger detector. Off bypasses it.");
-    configureBar(detectorLpf, "detectorLpf", "Detector LPF", "Low-pass filter on the audio-trigger detector. Off, at the right end, bypasses it.");
+    configureBar(detectorHpf, "detectorHpf", "Detector HPF", "High-pass filter on the audio-trigger detector. Off bypasses it. Select Audio or turn on Listen to use it.");
+    configureBar(detectorLpf, "detectorLpf", "Detector LPF", "Low-pass filter on the audio-trigger detector. Off, at the right end, bypasses it. Select Audio or turn on Listen to use it.");
     // Off (0 Hz) sits at the right end, where a low-pass filter is fully open.
     // The last 1% of travel selects Off.
     const juce::NormalisableRange<double> cutoff {1.0, 20000.0, 1.0, 0.4};
@@ -569,6 +588,7 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
     detectorMonitorButton.setComponentID("detectorMonitor");
     detectorMonitorButton.setClickingTogglesState(true);
     detectorMonitorButton.setTooltip("Listen to the filtered detector input in place of the processed output.");
+    detectorMonitorButton.onStateChange = [this] { refreshActivity(); };
     content.addAndMakeVisible(detectorMonitorButton);
     detectorMonitorAttachment = std::make_unique<ButtonAttachment>(p.parameters, "detectorMonitor", detectorMonitorButton);
 
@@ -592,11 +612,12 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
     }
     bandButton.setButtonText("Low band"); bandButton.setComponentID("band"); bandButton.setClickingTogglesState(true);
     bandButton.setTooltip("Duck only the low band below the band frequency.");
+    bandButton.onStateChange = [this] { refreshActivity(); };
     content.addAndMakeVisible(bandButton);
 
     retrigger.setComponentID("retrigger"); retrigger.setClickingTogglesState(true);
-    retrigger.setTooltip("Retrigger: when on, incoming triggers restart an active curve immediately.");
-    solo.setComponentID("solo"); solo.setClickingTogglesState(true); solo.setTooltip("Listen to the isolated ducked low band.");
+    retrigger.setTooltip("Retrigger: when on, incoming triggers restart an active curve immediately. Select MIDI or Audio to use it.");
+    solo.setComponentID("solo"); solo.setClickingTogglesState(true); solo.setTooltip("Listen to the isolated ducked low band. Turn on Low band to use it.");
     menu.setComponentID("menu"); menu.setTooltip("Reset slope and shift, or show the version and license.");
     menu.onClick = [this] { showMenu(); };
     previous.setComponentID("previous"); previous.setTooltip("Previous curve."); previous.onClick = [this] { stepCurve(-1); };
@@ -631,7 +652,7 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
     rateAttachment = std::make_unique<juce::ParameterAttachment>(*p.parameters.getParameter("rate"),
         [this, selectInGroup](float value) { selectInGroup(rateButtons, value); }, nullptr);
     triggerAttachment = std::make_unique<juce::ParameterAttachment>(*p.parameters.getParameter("trigger"),
-        [this, selectInGroup](float value) { selectInGroup(triggerButtons, value); repaint(); }, nullptr);
+        [this, selectInGroup](float value) { selectInGroup(triggerButtons, value); refreshActivity(); repaint(); }, nullptr);
     curveAttachment = std::make_unique<juce::ParameterAttachment>(*p.parameters.getParameter("curve"),
         [this](float value) {
             for(size_t i = 0; i < curveButtons.size(); ++i) curveButtons[i]->setToggleState(static_cast<int>(i) == juce::roundToInt(value), juce::dontSendNotification);
@@ -681,6 +702,17 @@ void DuckerEditor::showMenu() {
         if(result == 21) juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::InfoIcon, "openDucker 2",
             "openDucker 2\nFind your bounce with DJ Duck.\nMIT license, github.com/alanmarcero/openDucker");
     });
+}
+
+void DuckerEditor::refreshActivity() {
+    const int mode = static_cast<int>(owner.parameters.getRawParameterValue("trigger")->load());
+    const bool detectorHeard = mode == 2 || detectorMonitorButton.getToggleState();
+    threshold.setAlpha(mode == 2 ? 1.0f : look::inactiveAlpha);
+    retrigger.setAlpha(mode != 0 ? 1.0f : look::inactiveAlpha);
+    detectorHpf.setAlpha(detectorHeard ? 1.0f : look::inactiveAlpha);
+    detectorLpf.setAlpha(detectorHeard ? 1.0f : look::inactiveAlpha);
+    for(auto* control : std::initializer_list<juce::Component*> {&band, &solo, &bandSlope})
+        control->setAlpha(bandButton.getToggleState() ? 1.0f : look::inactiveAlpha);
 }
 
 void DuckerEditor::timerCallback() {

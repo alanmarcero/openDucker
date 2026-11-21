@@ -10,6 +10,8 @@ const juce::Colour background {0xff0d1317}, panel {0xff152026}, panelHover {0xff
     paper {0xffe6f0f5}, muted {0xffa2b5c0}, ink {0xff0d1317};
 // Bar text height as a share of the bar height, and the text inset at each end.
 constexpr float barTextScale = 0.36f, barPadding = 8.0f;
+// A control whose setting has no effect in the current state draws at this alpha.
+constexpr float inactiveAlpha = 0.4f;
 }
 
 class DuckLookAndFeel final : public juce::LookAndFeel_V4 {
@@ -80,6 +82,7 @@ private:
     void setChoice(const char* id, int index);
     void stepCurve(int delta);
     void showMenu();
+    void refreshActivity();
     void configureBar(juce::Slider&, const char* id, const juce::String& name, const char* tip);
     DuckerProcessor& owner;
     DuckLookAndFeel theme;

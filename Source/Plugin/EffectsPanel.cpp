@@ -5,17 +5,17 @@
 namespace {
 struct KnobSpec { const char* id; const char* name; const char* tip; };
 constexpr std::array<KnobSpec, 12> knobSpecs {{
-    {"delayLength", "Length", "Host-synced delay length. Very slow tempos are capped at 8 seconds."},
-    {"delayFeedback", "Feedback", "How much delay returns for another repeat."},
-    {"delayBass", "Bass", "Boost or cut delay bass by up to 12 dB."},
-    {"delayTreble", "Treble", "Boost or cut delay treble by up to 12 dB."},
-    {"reverbLength", "Length", "Reverb decay time, from 0.2 to 25 seconds (approximately a 60 dB decay)."},
-    {"reverbWidth", "Width", "Reverb stereo width. 0% is mono; 100% is full stereo."},
-    {"reverbBass", "Bass", "Boost or cut reverb bass by up to 12 dB."},
-    {"reverbTreble", "Treble", "Boost or cut reverb treble by up to 12 dB."},
-    {"sustain", "Sustain", "Compress peaks and lift quieter effect tails. Higher settings sustain the sound longer."},
-    {"destroy", "Destroy", "Glitch, crush and distort. Always acts during playback; Tail acts during the final five seconds of the estimated FX tail."},
-    {"fxMix", "FX Mix", "Blend original dry audio with the processed effects. 100% is effects only."},
+    {"delayLength", "Length", "Host-synced delay length. Very slow tempos are capped at 8 seconds. Turn on FX and Delay to use it."},
+    {"delayFeedback", "Feedback", "How much delay returns for another repeat. Turn on FX and Delay to use it."},
+    {"delayBass", "Bass", "Boost or cut delay bass by up to 12 dB. Turn on FX and Delay to use it."},
+    {"delayTreble", "Treble", "Boost or cut delay treble by up to 12 dB. Turn on FX and Delay to use it."},
+    {"reverbLength", "Length", "Reverb decay time, from 0.2 to 25 seconds (approximately a 60 dB decay). Turn on FX and Reverb to use it."},
+    {"reverbWidth", "Width", "Reverb stereo width. 0% is mono; 100% is full stereo. Turn on FX and Reverb to use it."},
+    {"reverbBass", "Bass", "Boost or cut reverb bass by up to 12 dB. Turn on FX and Reverb to use it."},
+    {"reverbTreble", "Treble", "Boost or cut reverb treble by up to 12 dB. Turn on FX and Reverb to use it."},
+    {"sustain", "Sustain", "Compress peaks and lift quieter effect tails. Higher settings sustain the sound longer. Turn on FX to use it."},
+    {"destroy", "Destroy", "Glitch, crush and distort. Always acts during playback; Tail acts during the final five seconds of the estimated FX tail. Turn on FX to use it."},
+    {"fxMix", "FX Mix", "Blend original dry audio with the processed effects. 100% is effects only. Turn on FX to use it."},
     {"output", "Output", "Final output level. The peak meter turns yellow above 0 dBFS."}
 }};
 }
@@ -47,12 +47,12 @@ EffectsPanel::EffectsPanel(DuckerProcessor& p) : owner(p) {
         {"Room", "Hall", "Plate"}, {"Serial", "Parallel"}, {"Tail", "Always"}
     }};
     const std::array<const char*, 6> choiceTips {
-        "Select which signal ducks: original dry input, effects, or both.",
-        "Before FX ducks the effects input, allowing tails to ring. After FX ducks the complete effects output. Dry-only does not use this switch.",
-        "Mono repeats stay centered. Ping-pong repeats alternate left and right.",
-        "Choose the reverb character. Length, Width, Bass and Treble apply to every type.",
-        "Parallel keeps delay echoes and reverb separate and audible. Serial sends delay repeats into the reverb.",
-        "Always processes continuous audio, even with Delay and Reverb off. Tail waits for the source to stop and needs a delay or reverb tail."
+        "Select which signal ducks: original dry input, effects, or both. Turn on FX to use it.",
+        "Before FX ducks the effects input, allowing tails to ring. After FX ducks the complete effects output. Dry-only does not use this switch. Turn on FX to use it.",
+        "Mono repeats stay centered. Ping-pong repeats alternate left and right. Turn on FX and Delay to use it.",
+        "Choose the reverb character. Length, Width, Bass and Treble apply to every type. Turn on FX and Reverb to use it.",
+        "Parallel keeps delay echoes and reverb separate and audible. Serial sends delay repeats into the reverb. Turn on FX to use it.",
+        "Always processes continuous audio, even with Delay and Reverb off. Tail waits for the source to stop and needs a delay or reverb tail. Turn on FX and raise Destroy to use it."
     };
     for(size_t i = 0; i < choices.size(); ++i) {
         auto& choice = choices[i];
@@ -68,9 +68,10 @@ EffectsPanel::EffectsPanel(DuckerProcessor& p) : owner(p) {
         button.onStateChange = [this] { refresh(); };
     }
     switches[0].setTooltip("Enable the effects chain. Off keeps the original ducking effect.");
-    switches[1].setTooltip("Enable or bypass the delay stage.");
-    switches[2].setTooltip("Enable or bypass the reverb stage.");
+    switches[1].setTooltip("Enable or bypass the delay stage. Turn on FX to use it.");
+    switches[2].setTooltip("Enable or bypass the reverb stage. Turn on FX to use it.");
     choices[0].onChange = [this] { refresh(); };
+    knobs[9].onValueChange = [this] { refresh(); };
     refresh();
 }
 
@@ -78,17 +79,17 @@ void EffectsPanel::refresh() {
     switches[0].setButtonText(switches[0].getToggleState() ? "FX On" : "FX Off");
     switches[1].setButtonText(switches[1].getToggleState() ? "Delay On" : "Delay Off");
     switches[2].setButtonText(switches[2].getToggleState() ? "Reverb On" : "Reverb Off");
-    choices[1].setEnabled(choices[0].getSelectedId() != 1);
-    choices[1].setAlpha(choices[1].isEnabled() ? 1.0f : 0.4f);
-    for(size_t i = 2; i < 4; ++i) {
-        choices[i].setEnabled(switches[i - 1].getToggleState());
-        choices[i].setAlpha(choices[i].isEnabled() ? 1.0f : 0.4f);
+    // Controls that have no effect draw dimmed and stay editable. Output always applies.
+    const bool fxOn = switches[0].getToggleState();
+    const std::array<bool, 6> choiceActive {fxOn, fxOn && choices[0].getSelectedId() != 1, fxOn && switches[1].getToggleState(),
+        fxOn && switches[2].getToggleState(), fxOn, fxOn && knobs[9].getValue() > 0};
+    for(size_t i = 0; i < choices.size(); ++i) choices[i].setAlpha(choiceActive[i] ? 1.0f : look::inactiveAlpha);
+    for(size_t i = 0; i < knobs.size(); ++i) {
+        const bool active = i == 11 || (fxOn && (i >= 8 || switches[i < 4 ? 1 : 2].getToggleState()));
+        knobs[i].setAlpha(active ? 1.0f : look::inactiveAlpha);
     }
-    for(size_t i = 0; i < 8; ++i) {
-        const bool enabled = switches[i < 4 ? 1 : 2].getToggleState();
-        knobs[i].setEnabled(enabled);
-        knobs[i].setAlpha(enabled ? 1.0f : 0.4f);
-    }
+    switches[1].setAlpha(fxOn ? 1.0f : look::inactiveAlpha);
+    switches[2].setAlpha(fxOn ? 1.0f : look::inactiveAlpha);
     repaint();
 }
 
