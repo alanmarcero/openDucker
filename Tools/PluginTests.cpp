@@ -666,6 +666,35 @@ void testBeatLockedWaveform() {
     direct.setPlayHead(nullptr);
 }
 
+void testParameterText() {
+    DuckerProcessor p;
+    for(auto* parameter : p.getParameters()) {
+        const auto* number = dynamic_cast<juce::AudioParameterFloat*>(parameter);
+        if(number == nullptr) continue;
+        const auto& range = number->getNormalisableRange();
+        for(const float position : {0.0f, 0.1f, 0.25f, 0.5f, 0.75f, 0.9f, 1.0f, parameter->getDefaultValue()}) {
+            const auto text = parameter->getText(position, 0);
+            const float typed = parameter->getValueForText(text);
+            require(parameter->getText(typed, 0) == text, "Typed parameter text does not round-trip");
+            const float tolerance = std::max((range.end - range.start) * 0.01f, range.interval);
+            require(std::abs(range.convertFrom0to1(typed) - range.convertFrom0to1(position)) <= tolerance,
+                "Typed parameter text lands on another value");
+        }
+    }
+    const auto typed = [&](const char* id, const char* text) {
+        auto* parameter = p.parameters.getParameter(id);
+        return parameter->convertFrom0to1(parameter->getValueForText(text));
+    };
+    require(std::abs(typed("mix", "50") - 50) < 1e-3f && std::abs(typed("mix", "50%") - 50) < 1e-3f, "Typed percent values are misread");
+    require(std::abs(typed("detectorHpf", "6.8k") - 6800) < 1 && std::abs(typed("detectorHpf", "6.8 kHz") - 6800) < 1, "Typed kHz values are misread");
+    require(typed("detectorLpf", "Off") < 0.5f, "Typed Off does not bypass the detector filter");
+    require(std::abs(typed("lookahead", "2 ms") - 2) < 1e-3f && std::abs(typed("lookahead", "0.002 s") - 2) < 1e-3f, "Typed lookahead units are misread");
+    require(std::abs(typed("reverbLength", "500 ms") - 0.5f) < 1e-3f, "Typed reverb ms values are misread");
+    require(std::abs(typed("tension", "+20%") - 20) < 1e-3f && std::abs(typed("threshold", "-12 dB") + 12) < 1e-3f, "Typed signed values are misread");
+    auto* bass = p.parameters.getParameter("delayBass");
+    require(bass->getText(bass->convertTo0to1(-0.01f), 0) == "0.0 dB", "Gain text shows -0.0 dB");
+}
+
 void testEditorRecall() {
     DuckerProcessor first;
     {
@@ -787,6 +816,7 @@ int main(int argc, char** argv) {
         testEffectsRouting<float>(); testEffectsRouting<double>();
         testMonoAndDisabledEffects<float>(); testMonoAndDisabledEffects<double>();
         testBeatLockedWaveform();
+        testParameterText();
         const bool floatReset = testHostReset<float>("float"), doubleReset = testHostReset<double>("double");
         require(floatReset && doubleReset, "Host reset leaves an audible effects tail");
 

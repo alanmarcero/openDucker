@@ -71,7 +71,7 @@ private:
     void setChoice(const char* id, int index);
     void stepCurve(int delta);
     void showMenu();
-    void configureBar(juce::Slider&, const char* id, const juce::String& name, const juce::String& unit, const char* tip);
+    void configureBar(juce::Slider&, const char* id, const juce::String& name, const char* tip);
     DuckerProcessor& owner;
     DuckLookAndFeel theme;
     juce::Component content;

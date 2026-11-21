@@ -469,16 +469,15 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
     mix.setTooltip("Blend between the original signal and the ducked signal. Double-click to reset to 100%.");
     content.addAndMakeVisible(mix);
     mixAttachment = std::make_unique<SliderAttachment>(p.parameters, "mix", mix);
-    mix.textFromValueFunction = [](double value) { return juce::String(juce::roundToInt(value)) + "%"; };
 
-    configureBar(band, "bandFrequency", "Band", "Hz", "Band split frequency. With BAND on, only frequencies below this cutoff are ducked.");
+    configureBar(band, "bandFrequency", "Band", "Band split frequency. With BAND on, only frequencies below this cutoff are ducked.");
     band.setSliderStyle(juce::Slider::LinearHorizontal); band.setDoubleClickReturnValue(true, 150);
-    configureBar(shift, "shift", "Shift", "%", "Offset the curve against the beat. In MIDI and Audio modes this delays the curve after each trigger.");
-    configureBar(tension, "tension", "Tension", "%", "Warp the active ducking curve between snappy concave (-100%) and tight hold (+100%).");
+    configureBar(shift, "shift", "Shift", "Offset the curve against the beat. In MIDI and Audio modes this delays the curve after each trigger.");
+    configureBar(tension, "tension", "Tension", "Warp the active ducking curve between snappy concave (-100%) and tight hold (+100%).");
     tension.setDoubleClickReturnValue(true, 0);
-    configureBar(floor, "floor", "Floor", "%", "Minimum gain floor at the bottom of the ducking curve (0% = full mute, 100% = no ducking).");
+    configureBar(floor, "floor", "Floor", "Minimum gain floor at the bottom of the ducking curve (0% = full mute, 100% = no ducking).");
     floor.setDoubleClickReturnValue(true, 0);
-    configureBar(threshold, "threshold", "Threshold", "dB", "Audio trigger level. Uses the sidechain input when connected, otherwise the main input.");
+    configureBar(threshold, "threshold", "Threshold", "Audio trigger level. Uses the sidechain input when connected, otherwise the main input.");
     threshold.setDoubleClickReturnValue(true, -24);
     bandSlope.setComponentID("bandSlope");
     bandSlope.setName("Band slope");
@@ -486,10 +485,8 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
     bandSlope.setTooltip("Crossover filter steepness for Low Band ducking mode.");
     content.addAndMakeVisible(bandSlope);
     bandSlopeAttachment = std::make_unique<ComboBoxAttachment>(p.parameters, "bandSlope", bandSlope);
-    configureBar(detectorHpf, "detectorHpf", "Detector HPF", "Hz", "High-pass filter on the audio-trigger detector. 0 Hz bypasses it.");
-    configureBar(detectorLpf, "detectorLpf", "Detector LPF", "Hz", "Low-pass filter on the audio-trigger detector. 0 Hz bypasses it.");
-    detectorHpf.textFromValueFunction = [](double value) { return value < 1.0 ? juce::String("Off") : juce::String(juce::roundToInt(value)) + " Hz"; };
-    detectorLpf.textFromValueFunction = [](double value) { return value < 1.0 ? juce::String("Off") : juce::String(juce::roundToInt(value)) + " Hz"; };
+    configureBar(detectorHpf, "detectorHpf", "Detector HPF", "High-pass filter on the audio-trigger detector. 0 Hz bypasses it.");
+    configureBar(detectorLpf, "detectorLpf", "Detector LPF", "Low-pass filter on the audio-trigger detector. 0 Hz bypasses it.");
     detectorHpf.setDoubleClickReturnValue(true, 0);
     detectorLpf.setDoubleClickReturnValue(true, 0);
     detectorHpfLabel.setComponentID("detectorHpfLabel");
@@ -581,7 +578,7 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
 
 DuckerEditor::~DuckerEditor() { stopTimer(); setLookAndFeel(nullptr); }
 
-void DuckerEditor::configureBar(juce::Slider& slider, const char* id, const juce::String& name, const juce::String& unit, const char* tip) {
+void DuckerEditor::configureBar(juce::Slider& slider, const char* id, const juce::String& name, const char* tip) {
     slider.setComponentID(id); slider.setName(name); slider.setTooltip(tip);
     slider.setSliderStyle(juce::Slider::LinearBar); slider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
     content.addAndMakeVisible(slider);
@@ -593,9 +590,6 @@ void DuckerEditor::configureBar(juce::Slider& slider, const char* id, const juce
     else if(juce::String(id) == "detectorHpf") detectorHpfAttachment = std::move(attachment);
     else if(juce::String(id) == "detectorLpf") detectorLpfAttachment = std::move(attachment);
     else thresholdAttachment = std::move(attachment);
-    slider.textFromValueFunction = [unit](double value) {
-        return (unit == "%" ? juce::String(juce::roundToInt(value)) : juce::String(value, unit == "dB" ? 1 : 0)) + (unit == "%" ? "%" : " " + unit);
-    };
 }
 
 void DuckerEditor::setChoice(const char* id, int index) {

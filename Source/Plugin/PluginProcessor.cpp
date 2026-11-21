@@ -13,13 +13,51 @@ constexpr std::array<const char*, 19> ids {"mix", "curve", "rate", "length", "sh
 constexpr std::array<const char*, 22> fxIds {"fxEnabled", "duckTarget", "duckPosition", "fxMix", "delayEnabled", "delayLength",
     "delayFeedback", "delayBass", "delayTreble", "delayMode", "reverbEnabled", "reverbType",
     "reverbLength", "reverbWidth", "reverbBass", "reverbTreble", "sustain", "destroy", "output", "fxFlow", "destroyMode", "lookahead"};
+
+// The editor, typed entry and host automation all use these texts and parsers.
+struct Format {
+    std::function<juce::String(float, int)> text;
+    std::function<float(const juce::String&)> parse = [](const juce::String& typed) { return typed.getFloatValue(); };
+};
+const Format percent {[](float value, int) { return juce::String(juce::roundToInt(value)) + "%"; }};
+const Format signedPercent {[](float value, int) {
+    const int rounded = juce::roundToInt(value);
+    return (rounded > 0 ? "+" : "") + juce::String(rounded) + "%";
+}};
+const Format decibels {[](float value, int) {
+    const float tenths = std::round(value * 10.0f) / 10.0f;
+    return (tenths > 0 ? "+" : "") + juce::String(std::abs(tenths) < 0.05f ? 0.0f : tenths, 1) + " dB";
+}};
+const Format hertz {[](float value, int) {
+    if(juce::roundToInt(value) < 1000) return juce::String(juce::roundToInt(value)) + " Hz";
+    // From 9.995 kHz, one decimal keeps three digits: 10.0 kHz.
+    return juce::String(value / 1000.0f, value < 9995.0f ? 2 : 1) + " kHz";
+}, [](const juce::String& typed) { return typed.getFloatValue() * (typed.containsIgnoreCase("k") ? 1000.0f : 1.0f); }};
+const Format filterHertz {[](float value, int length) {
+    if(value < 1.0f) return juce::String("Off");
+    return hertz.text(value, length);
+}, hertz.parse};
+const Format milliseconds {[](float value, int) {
+    if(std::round(value * 10.0f) < 100.0f) return juce::String(value, 1) + " ms";
+    if(juce::roundToInt(value) < 1000) return juce::String(juce::roundToInt(value)) + " ms";
+    return juce::String(value / 1000.0f, 2) + " s";
+}, [](const juce::String& typed) {
+    const bool inSeconds = typed.trim().endsWithIgnoreCase("s") && !typed.trim().endsWithIgnoreCase("ms");
+    return typed.getFloatValue() * (inSeconds ? 1000.0f : 1.0f);
+}};
+const Format lookaheadTime {[](float value, int length) {
+    if(value < 0.05f) return juce::String("Off");
+    return milliseconds.text(value, length);
+}, milliseconds.parse};
+const Format secondsTime {[](float value, int length) { return milliseconds.text(value * 1000.0f, length); },
+    [](const juce::String& typed) { return typed.getFloatValue() * (typed.trim().endsWithIgnoreCase("ms") ? 0.001f : 1.0f); }};
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout DuckerProcessor::layout() {
     juce::AudioProcessorValueTreeState::ParameterLayout result;
-    const auto number = [&](const char* id, const char* name, juce::NormalisableRange<float> range, float initial, const char* unit, int version = 1) {
+    const auto number = [&](const char* id, const char* name, juce::NormalisableRange<float> range, float initial, const Format& format, int version = 1) {
         result.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID {id, version}, name, range, initial,
-            juce::AudioParameterFloatAttributes {}.withLabel(unit)));
+            juce::AudioParameterFloatAttributes {}.withStringFromValueFunction(format.text).withValueFromStringFunction(format.parse)));
     };
     const auto toggle = [&](const char* id, const char* name, bool initial, int version = 1) {
         result.add(std::make_unique<juce::AudioParameterBool>(juce::ParameterID {id, version}, name, initial));
@@ -29,48 +67,48 @@ juce::AudioProcessorValueTreeState::ParameterLayout DuckerProcessor::layout() {
     };
     juce::StringArray curves;
     for(const auto* name : duck::curveNames) curves.add(name);
-    number("mix", "Mix", {0, 100, 0.1f}, 100, "%");
+    number("mix", "Mix", {0, 100, 0.1f}, 100, percent);
     choice("curve", "Curve", curves, duck::defaultCurve);
     choice("rate", "Length", {"1/8", "1/4", "1/2", "1/1"}, 1);
-    number("length", "Slope", {5, 100, 0.1f}, 100, "%");
-    number("shift", "Shift", {0, 100, 0.1f}, 0, "%");
+    number("length", "Slope", {5, 100, 0.1f}, 100, percent);
+    number("shift", "Shift", {0, 100, 0.1f}, 0, percent);
     choice("trigger", "Trigger", {"Sync", "MIDI", "Audio"}, 0);
     toggle("retrigger", "Retrigger", true);
-    number("threshold", "Audio threshold", {-60, 0, 0.1f}, -24, "dB");
+    number("threshold", "Audio threshold", {-60, 0, 0.1f}, -24, decibels);
     choice("smoothing", "Smoothing", {"Off", "Low", "Medium", "High"}, 1);
     toggle("bandOn", "Band", false);
-    number("bandFrequency", "Band frequency", {30, 1000, 1, 0.4f}, 150, "Hz");
+    number("bandFrequency", "Band frequency", {30, 1000, 1, 0.4f}, 150, hertz);
     toggle("bandSolo", "Band solo", false);
     toggle("bypass", "Bypass", false);
-    number("detectorHpf", "Detector high-pass", {0, 20000, 1, 0.4f}, 0, "Hz", 2);
-    number("detectorLpf", "Detector low-pass", {0, 20000, 1, 0.4f}, 0, "Hz", 2);
+    number("detectorHpf", "Detector high-pass", {0, 20000, 1, 0.4f}, 0, filterHertz, 2);
+    number("detectorLpf", "Detector low-pass", {0, 20000, 1, 0.4f}, 0, filterHertz, 2);
     toggle("detectorMonitor", "Detector monitor", false, 2);
 
     toggle("fxEnabled", "Effects enabled", false, 2);
     choice("duckTarget", "Duck", {"Dry", "Wet", "Both"}, 2, 2);
     choice("duckPosition", "Ducking position", {"Before FX", "After FX"}, 1, 2);
-    number("fxMix", "FX mix", {0, 100, 0.01f}, 30, "%", 2);
+    number("fxMix", "FX mix", {0, 100, 0.01f}, 30, percent, 2);
     toggle("delayEnabled", "Delay enabled", true, 2);
     choice("delayLength", "Delay length", {"1/32", "1/16", "1/8", "1/8 dotted", "1/4", "1/4 dotted", "1/2", "1 bar"}, 3, 2);
-    number("delayFeedback", "Delay feedback", {0, 95, 0.01f}, 35, "%", 2);
-    number("delayBass", "Delay bass", {-12, 12, 0.01f}, 0, "dB", 2);
-    number("delayTreble", "Delay treble", {-12, 12, 0.01f}, 0, "dB", 2);
+    number("delayFeedback", "Delay feedback", {0, 95, 0.01f}, 35, percent, 2);
+    number("delayBass", "Delay bass", {-12, 12, 0.01f}, 0, decibels, 2);
+    number("delayTreble", "Delay treble", {-12, 12, 0.01f}, 0, decibels, 2);
     choice("delayMode", "Delay mode", {"Mono", "Ping-pong"}, 1, 2);
     toggle("reverbEnabled", "Reverb enabled", true, 2);
     choice("reverbType", "Reverb type", {"Room", "Hall", "Plate"}, 1, 2);
-    number("reverbLength", "Reverb length", {0.2f, 25, 0.01f, 0.45f}, 6, "s", 2);
-    number("reverbWidth", "Reverb width", {0, 100, 0.01f}, 100, "%", 2);
-    number("reverbBass", "Reverb bass", {-12, 12, 0.01f}, 0, "dB", 2);
-    number("reverbTreble", "Reverb treble", {-12, 12, 0.01f}, 0, "dB", 2);
-    number("sustain", "Sustain", {0, 100, 0.01f}, 0, "%", 2);
-    number("destroy", "Destroy", {0, 100, 0.01f}, 0, "%", 2);
-    number("output", "Output", {-24, 12, 0.01f}, 0, "dB", 2);
+    number("reverbLength", "Reverb length", {0.2f, 25, 0.01f, 0.45f}, 6, secondsTime, 2);
+    number("reverbWidth", "Reverb width", {0, 100, 0.01f}, 100, percent, 2);
+    number("reverbBass", "Reverb bass", {-12, 12, 0.01f}, 0, decibels, 2);
+    number("reverbTreble", "Reverb treble", {-12, 12, 0.01f}, 0, decibels, 2);
+    number("sustain", "Sustain", {0, 100, 0.01f}, 0, percent, 2);
+    number("destroy", "Destroy", {0, 100, 0.01f}, 0, percent, 2);
+    number("output", "Output", {-24, 12, 0.01f}, 0, decibels, 2);
     choice("fxFlow", "FX flow", {"Serial", "Parallel"}, 1, 2);
     choice("destroyMode", "Destroy mode", {"Tail", "Always"}, 1, 2);
-    number("tension", "Curve tension", {-100, 100, 0.5f}, 0, "%", 3);
-    number("floor", "Duck floor", {0, 100, 0.5f}, 0, "%", 3);
+    number("tension", "Curve tension", {-100, 100, 0.5f}, 0, signedPercent, 3);
+    number("floor", "Duck floor", {0, 100, 0.5f}, 0, percent, 3);
     choice("bandSlope", "Band slope", {"12 dB/oct", "24 dB/oct", "48 dB/oct"}, 1, 3);
-    number("lookahead", "Lookahead", {0, 5, 0.1f}, 0, "ms", 4);
+    number("lookahead", "Lookahead", {0, 5, 0.1f}, 0, lookaheadTime, 4);
     return result;
 }
 

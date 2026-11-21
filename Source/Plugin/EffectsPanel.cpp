@@ -39,20 +39,7 @@ EffectsPanel::EffectsPanel(DuckerProcessor& p) : owner(p) {
             knob.textFromValueFunction = [](double value) {
                 return juce::StringArray {"1/32", "1/16", "1/8", "1/8 dot", "1/4", "1/4 dot", "1/2", "1 bar"}[juce::jlimit(0, 7, juce::roundToInt(value))];
             };
-            continue;
         }
-        if(i == 4) {
-            knob.textFromValueFunction = [](double value) { return juce::String(value, 1) + " s"; };
-            continue;
-        }
-        if(i == 2 || i == 3 || i == 6 || i == 7 || i == 11) {
-            knob.textFromValueFunction = [](double value) {
-                const double clean = std::abs(value) < 0.05 ? 0.0 : value;
-                return (clean > 0 ? "+" : "") + juce::String(clean, 1) + " dB";
-            };
-            continue;
-        }
-        knob.textFromValueFunction = [](double value) { return juce::String(juce::roundToInt(value)) + "%"; };
     }
     const std::array<const char*, 6> choiceIds {"duckTarget", "duckPosition", "delayMode", "reverbType", "fxFlow", "destroyMode"};
     const std::array<juce::StringArray, 6> choiceItems {{
