@@ -36,8 +36,9 @@ EffectsPanel::EffectsPanel(DuckerProcessor& p) : owner(p) {
         auto* parameter = p.parameters.getParameter(spec.id);
         knob.setDoubleClickReturnValue(true, parameter->convertFrom0to1(parameter->getDefaultValue()));
         if(i == 0) {
-            knob.textFromValueFunction = [](double value) {
-                return juce::StringArray {"1/32", "1/16", "1/8", "1/8 dot", "1/4", "1/4 dot", "1/2", "1 bar"}[juce::jlimit(0, 7, juce::roundToInt(value))];
+            const auto labels = parameter->getAllValueStrings();
+            knob.textFromValueFunction = [labels](double value) {
+                return labels[juce::jlimit(0, labels.size() - 1, juce::roundToInt(value))];
             };
         }
     }

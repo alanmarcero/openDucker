@@ -49,6 +49,7 @@ public:
     // Reads trigger and detector activity once per editor refresh.
     void tick();
     bool isFlashing() const noexcept { return flashFrames > 0; }
+    bool isClipped() const noexcept { return clipped; }
     void paint(juce::Graphics&) override;
     void mouseMove(const juce::MouseEvent&) override;
     void mouseDown(const juce::MouseEvent&) override;

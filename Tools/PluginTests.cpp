@@ -584,7 +584,19 @@ void testEffectsControls(DuckerProcessor& p, juce::AudioProcessorEditor& editor)
     set(p, "trigger", 2); set(p, "bandOn", 1);
     require(find(editor, "threshold")->getAlpha() > 0.99f && find(editor, "retrigger")->getAlpha() > 0.99f && find(editor, "detectorHpf")->getAlpha() > 0.99f
         && find(editor, "bandFrequency")->getAlpha() > 0.99f, "Live controls stay dimmed");
+    set(p, "trigger", 0);
+    require(find(editor, "threshold")->getAlpha() < 0.5f && find(editor, "retrigger")->getAlpha() < 0.5f,
+        "Switching trigger to Sync lags on dimming");
+    set(p, "trigger", 1);
+    require(find(editor, "threshold")->getAlpha() < 0.5f && find(editor, "retrigger")->getAlpha() > 0.99f,
+        "Switching trigger to MIDI lags on dimming");
+    set(p, "trigger", 2);
+    require(find(editor, "threshold")->getAlpha() > 0.99f && find(editor, "retrigger")->getAlpha() > 0.99f,
+        "Switching trigger to Audio lags on dimming");
     set(p, "trigger", 0); set(p, "bandOn", 0);
+    auto& delayLength = control<juce::Slider>(editor, "delayLength");
+    require(delayLength.getTextFromValue(3) == "1/8 dotted" && delayLength.getTextFromValue(5) == "1/4 dotted",
+        "Delay length knob text does not match parameter choices");
     auto& undo = control<juce::Button>(editor, "undo");
     undo.setEnabled(true);
     const auto enabledLook = undo.createComponentSnapshot(undo.getLocalBounds());
@@ -796,6 +808,9 @@ void testParameterText() {
     require(std::abs(typed("tension", "+20%") - 20) < 1e-3f && std::abs(typed("threshold", "-12 dB") + 12) < 1e-3f, "Typed signed values are misread");
     auto* bass = p.parameters.getParameter("delayBass");
     require(bass->getText(bass->convertTo0to1(-0.01f), 0) == "0.0 dB", "Gain text shows -0.0 dB");
+    auto* hpf = p.parameters.getParameter("detectorHpf");
+    require(hpf->getText(hpf->convertTo0to1(10000.0f), 0) == "10.00 kHz" && hpf->getText(hpf->convertTo0to1(15500.0f), 0) == "15.50 kHz",
+        "kHz text above 9.995 kHz does not use two decimals");
 }
 
 void testTriggerFeedback() {
@@ -812,6 +827,17 @@ void testTriggerFeedback() {
     require(p.triggerCount.load() == 1 && p.detectorPeak.load() > 0.4f, "Audio triggers and the detector level do not reach the editor");
     display->tick();
     require(display->isFlashing() && p.detectorPeak.load() < 1e-9f, "The display does not flash on a trigger or read the detector peak");
+    p.detectorPeak.store(1.5f);
+    display->tick();
+    require(display->isClipped(), "Detector peak above 0 dBFS does not latch the clip light");
+    const auto clipArea = juce::Rectangle<int>(display->getWidth() - 17, 38, 9, 9);
+    require(yellowPixels(display->createComponentSnapshot(display->getLocalBounds()), clipArea) > 0,
+        "Clip light is hidden by the slope grip at 100%");
+    const auto time = juce::Time::getCurrentTime();
+    const juce::Point<float> clipCenter {static_cast<float>(display->getWidth()) - 13.0f, 42.0f};
+    display->mouseDown(juce::MouseEvent {juce::Desktop::getInstance().getMainMouseSource(), clipCenter,
+        juce::ModifierKeys {juce::ModifierKeys::leftButtonModifier}, 1, 0, 0, 0, 0, display, display, time, clipCenter, time, 1, false});
+    require(!display->isClipped(), "Clicking the clip light at 100% slope does not clear it");
     set(p, "trigger", 0);
     midi.addEvent(juce::MidiMessage::noteOn(1, 36, 1.0f), 10);
     p.processBlock(audio, midi);

@@ -30,8 +30,7 @@ const Format decibels {[](float value, int) {
 }};
 const Format hertz {[](float value, int) {
     if(juce::roundToInt(value) < 1000) return juce::String(juce::roundToInt(value)) + " Hz";
-    // From 9.995 kHz, one decimal keeps three digits: 10.0 kHz.
-    return juce::String(value / 1000.0f, value < 9995.0f ? 2 : 1) + " kHz";
+    return juce::String(value / 1000.0f, 2) + " kHz";
 }, [](const juce::String& typed) { return typed.getFloatValue() * (typed.containsIgnoreCase("k") ? 1000.0f : 1.0f); }};
 const Format filterHertz {[](float value, int length) {
     if(value < 1.0f) return juce::String("Off");

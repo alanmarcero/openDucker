@@ -466,7 +466,7 @@ void CurveDisplay::paint(juce::Graphics& g) {
 
     // In Audio mode, a dBFS meter shows the detector level against Threshold, with a 1 s peak hold and a clip light.
     if(static_cast<int>(owner.parameters.getRawParameterValue("trigger")->load()) == 2) {
-        const auto meter = juce::Rectangle<float>(width - 18, 40, 10, height - 48);
+        const auto meter = juce::Rectangle<float>(width - 18, 52, 10, height - 60);
         const auto heightOf = [&](float level) {
             return meter.getHeight() * juce::jlimit(0.0f, 1.0f, juce::Decibels::gainToDecibels(level, -60.0f) / 60.0f + 1.0f);
         };
@@ -714,7 +714,10 @@ void DuckerEditor::showMenu() {
 }
 
 void DuckerEditor::refreshActivity() {
-    const int mode = static_cast<int>(owner.parameters.getRawParameterValue("trigger")->load());
+    auto* triggerParameter = owner.parameters.getParameter("trigger");
+    const int mode = triggerParameter != nullptr
+        ? juce::roundToInt(triggerParameter->convertFrom0to1(triggerParameter->getValue()))
+        : 0;
     const bool detectorHeard = mode == 2 || detectorMonitorButton.getToggleState();
     threshold.setAlpha(mode == 2 ? 1.0f : look::inactiveAlpha);
     retrigger.setAlpha(mode != 0 ? 1.0f : look::inactiveAlpha);
