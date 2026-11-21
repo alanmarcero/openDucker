@@ -179,6 +179,18 @@ void DuckLookAndFeel::drawButtonText(juce::Graphics& g, juce::TextButton& button
         button.getToggleState() ? look::ink : look::paper);
 }
 
+juce::Label* DuckLookAndFeel::createSliderTextBox(juce::Slider& slider) {
+    auto* box = LookAndFeel_V4::createSliderTextBox(slider);
+    // The bar draws its own name and value, so the box shows text only while typing.
+    box->setColour(juce::Label::textColourId, juce::Colours::transparentBlack);
+    box->setColour(juce::Label::outlineColourId, juce::Colours::transparentBlack);
+    box->setColour(juce::TextEditor::textColourId, look::paper);
+    box->setColour(juce::TextEditor::backgroundColourId, look::panel);
+    box->setColour(juce::TextEditor::highlightColourId, look::mint.withAlpha(0.35f));
+    box->setColour(juce::TextEditor::focusedOutlineColourId, look::mint);
+    return box;
+}
+
 void GlyphButton::paintButton(juce::Graphics& g, bool over, bool down) {
     const auto bounds = getLocalBounds().toFloat();
     const bool arrow = glyph == Glyph::Previous || glyph == Glyph::Next || glyph == Glyph::PreviousBank || glyph == Glyph::NextBank;
@@ -470,8 +482,25 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
     bandSlope.setTooltip("Crossover filter steepness for Low Band ducking mode.");
     content.addAndMakeVisible(bandSlope);
     bandSlopeAttachment = std::make_unique<ComboBoxAttachment>(p.parameters, "bandSlope", bandSlope);
-    configureBar(detectorHpf, "detectorHpf", "Detector HPF", "High-pass filter on the audio-trigger detector. 0 Hz bypasses it.");
-    configureBar(detectorLpf, "detectorLpf", "Detector LPF", "Low-pass filter on the audio-trigger detector. 0 Hz bypasses it.");
+    configureBar(detectorHpf, "detectorHpf", "Detector HPF", "High-pass filter on the audio-trigger detector. Off bypasses it.");
+    configureBar(detectorLpf, "detectorLpf", "Detector LPF", "Low-pass filter on the audio-trigger detector. Off, at the right end, bypasses it.");
+    // Off (0 Hz) sits at the right end, where a low-pass filter is fully open.
+    // The last 1% of travel selects Off.
+    const juce::NormalisableRange<double> cutoff {1.0, 20000.0, 1.0, 0.4};
+    constexpr double openEnd = 0.98, offStart = 0.99;
+    detectorLpf.setNormalisableRange({0.0, 20000.0,
+        [cutoff](double, double, double position) {
+            if(position >= offStart) return 0.0;
+            return cutoff.convertFrom0to1(position / openEnd);
+        },
+        [cutoff](double, double, double hertz) {
+            if(hertz < 1.0) return 1.0;
+            return cutoff.convertTo0to1(hertz) * openEnd;
+        },
+        [cutoff](double, double, double hertz) {
+            if(hertz < 1.0) return 0.0;
+            return cutoff.snapToLegalValue(hertz);
+        }});
     detectorHpf.setDoubleClickReturnValue(true, 0);
     detectorLpf.setDoubleClickReturnValue(true, 0);
     detectorHpfLabel.setComponentID("detectorHpfLabel");
@@ -565,8 +594,11 @@ DuckerEditor::~DuckerEditor() { stopTimer(); setLookAndFeel(nullptr); }
 
 void DuckerEditor::configureBar(juce::Slider& slider, const char* id, const juce::String& name, const char* tip) {
     slider.setComponentID(id); slider.setName(name); slider.setTooltip(tip);
-    slider.setSliderStyle(juce::Slider::LinearBar); slider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+    slider.setSliderStyle(juce::Slider::LinearBar); slider.setSliderSnapsToMousePosition(false);
     content.addAndMakeVisible(slider);
+    // A click without a drag opens this text box for typing.
+    // The theme creates the box, so the bar must be in the editor first.
+    slider.setTextBoxStyle(juce::Slider::TextBoxLeft, false, 0, 0);
     auto attachment = std::make_unique<SliderAttachment>(owner.parameters, id, slider);
     if(juce::String(id) == "bandFrequency") bandAttachment = std::move(attachment);
     else if(juce::String(id) == "shift") shiftAttachment = std::move(attachment);

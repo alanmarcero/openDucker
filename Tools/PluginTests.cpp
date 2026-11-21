@@ -613,7 +613,29 @@ void testControls(DuckerProcessor& p, juce::AudioProcessorEditor& editor) {
     require(std::abs(get(p, "length") - 50) < 1, "Dragging the handle does not set the slope length");
     display.mouseDoubleClick(event({width * 0.5f, 100}, false));
     require(get(p, "length") == 100, "Double-clicking the handle does not reset the slope length");
+    for(const auto* id : {"bandFrequency", "shift", "tension", "floor", "threshold", "detectorHpf", "detectorLpf"}) {
+        const auto& bar = control<juce::Slider>(editor, id);
+        require(!bar.getSliderSnapsToMousePosition() && bar.isTextBoxEditable(), "A bar jumps to the click point or takes no typed value");
+    }
+    auto& thresholdBar = control<juce::Slider>(editor, "threshold");
+    thresholdBar.setValue(-24, juce::sendNotificationSync);
+    const auto press = [&](float x, bool dragged) {
+        return juce::MouseEvent {juce::Desktop::getInstance().getMainMouseSource(), {x, 20}, juce::ModifierKeys {juce::ModifierKeys::leftButtonModifier},
+            1, 0, 0, 0, 0, &thresholdBar, &thresholdBar, time, {5, 20}, time, 1, dragged};
+    };
+    thresholdBar.mouseDown(press(5, false));
+    thresholdBar.mouseDrag(press(25, true));
+    thresholdBar.mouseUp(press(25, true));
+    require(std::abs(get(p, "threshold") - (-24.0 + 20.0 / thresholdBar.getMouseDragSensitivity() * 60.0)) < 0.2, "Dragging a bar jumps to the click point");
+    auto* typedBox = dynamic_cast<juce::Label*>(thresholdBar.getChildComponent(0));
+    require(typedBox != nullptr, "The threshold bar has no text box");
+    typedBox->setText("-18 dB", juce::sendNotificationSync);
+    require(std::abs(get(p, "threshold") + 18) < 0.05f, "Typing into a bar does not set its parameter");
+    auto& lowPass = control<juce::Slider>(editor, "detectorLpf");
+    require(lowPass.valueToProportionOfLength(0) > 0.999 && lowPass.valueToProportionOfLength(20000) < 0.99 && lowPass.valueToProportionOfLength(1) < 0.001,
+        "The detector LPF does not put Off at the right end");
     set(p, "bandOn", 0); set(p, "bandSolo", 0); set(p, "shift", 0); set(p, "tension", 0); set(p, "floor", 0); set(p, "bandSlope", 1); set(p, "retrigger", 1);
+    set(p, "threshold", -24);
 }
 
 void renderCycle(DuckerProcessor& processor, Host& host, int cycleSamples, bool sidechain, float mainLevel, int clickSamples) {
