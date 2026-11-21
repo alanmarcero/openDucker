@@ -664,6 +664,11 @@ void testControls(DuckerProcessor& p, juce::AudioProcessorEditor& editor) {
     thresholdBar.mouseDrag(press(25, true));
     thresholdBar.mouseUp(press(25, true));
     require(std::abs(get(p, "threshold") - (-24.0 + 20.0 / thresholdBar.getMouseDragSensitivity() * 60.0)) < 0.2, "Dragging a bar jumps to the click point");
+    auto& lookaheadBar = control<juce::Slider>(editor, "lookahead");
+    lookaheadBar.setValue(2.5, juce::sendNotificationSync);
+    require(std::abs(get(p, "lookahead") - 2.5f) < 0.01f && lookaheadBar.getTextFromValue(0) == "Off" && lookaheadBar.getTextFromValue(2.5) == "2.5 ms"
+        && lookaheadBar.getTooltip().contains("latency"), "The Lookahead bar is missing, disconnected or silent about latency");
+    set(p, "lookahead", 0);
     auto* typedBox = dynamic_cast<juce::Label*>(thresholdBar.getChildComponent(0));
     require(typedBox != nullptr, "The threshold bar has no text box");
     typedBox->setText("-18 dB", juce::sendNotificationSync);

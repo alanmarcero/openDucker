@@ -29,7 +29,7 @@ All of these plugins are in beta. The macOS and Linux builds are not up to date,
 
 Sustain raises quieter parts and controls peaks. Destroy offers Tail and Always modes and adds bitcrush, stutter, and drive. MIDI and Audio triggers can work while playback is stopped.
 
-Drag a bar to change it, click it to type a value, or Alt-click it to reset it. All controls support host automation and session recall. The plugin supports mono and stereo audio and reports zero latency.
+Drag a bar to change it, click it to type a value, or Alt-click it to reset it. All controls support host automation and session recall. The plugin supports mono and stereo audio. Lookahead delays the audio by up to 5 ms so each duck reaches its floor before the transient, and the plugin reports that delay to the host as latency. With Lookahead off, it adds no latency.
 
 ![Audio-triggered ducking](docs/screenshots/openDucker-audio.png)
 

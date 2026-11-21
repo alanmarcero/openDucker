@@ -489,6 +489,8 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
     floor.setDoubleClickReturnValue(true, 0);
     configureBar(threshold, "threshold", "Threshold", "Audio trigger level. Uses the sidechain input when connected, otherwise the main input.");
     threshold.setDoubleClickReturnValue(true, -24);
+    configureBar(lookahead, "lookahead", "Lookahead", "Delays the audio by up to 5 ms so each duck reaches its floor before the transient. "
+        "The plugin reports this delay to the host as latency. Off adds no latency.");
     bandSlope.setComponentID("bandSlope");
     bandSlope.setName("Band slope");
     bandSlope.addItemList({"12 dB/oct", "24 dB/oct", "48 dB/oct"}, 1);
@@ -684,6 +686,7 @@ void DuckerEditor::resized() {
     for(size_t i = 0; i < curveButtons.size(); ++i)
         curveButtons[i]->setBounds(area(354 + static_cast<float>(i % 8) * 79, i < 8 ? 358 : 404, 74, 40));
 
+    lookahead.setBounds(area(558, 450, 200, 40));
     threshold.setBounds(area(762, 450, 222, 40));
     detectorHpf.setBounds(area(354, 496, 236, 40));
     detectorLpf.setBounds(area(594, 496, 236, 40));

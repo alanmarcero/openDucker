@@ -84,7 +84,7 @@ private:
     juce::TextButton effectsToggle;
     juce::TextButton pushItButton {"Audition"};
     bool effectsExpanded = true;
-    juce::Slider mix, band, shift, slope, threshold, detectorHpf, detectorLpf, tension, floor;
+    juce::Slider mix, band, shift, slope, threshold, lookahead, detectorHpf, detectorLpf, tension, floor;
     juce::ComboBox bandSlope;
     juce::TextButton detectorMonitorButton {"Listen"};
     std::array<juce::TextButton, 4> rateButtons;
