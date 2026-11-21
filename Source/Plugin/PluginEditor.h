@@ -82,9 +82,8 @@ private:
     juce::TextButton effectsToggle;
     juce::TextButton pushItButton {"Audition"};
     bool effectsExpanded = true;
-    juce::Slider mix, band, shift, threshold, detectorHpf, detectorLpf, tension, floor;
+    juce::Slider mix, band, shift, slope, threshold, detectorHpf, detectorLpf, tension, floor;
     juce::ComboBox bandSlope;
-    juce::Label detectorHpfLabel {{}, "Detector HPF"}, detectorLpfLabel {{}, "Detector LPF"};
     juce::TextButton detectorMonitorButton {"Listen"};
     std::array<juce::TextButton, 4> rateButtons;
     std::array<juce::TextButton, 3> triggerButtons;
@@ -99,8 +98,8 @@ private:
     using SliderAttachment = juce::AudioProcessorValueTreeState::SliderAttachment;
     using ButtonAttachment = juce::AudioProcessorValueTreeState::ButtonAttachment;
     using ComboBoxAttachment = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
-    std::unique_ptr<SliderAttachment> mixAttachment, bandAttachment, shiftAttachment, thresholdAttachment,
-        detectorHpfAttachment, detectorLpfAttachment, tensionAttachment, floorAttachment;
+    std::unique_ptr<SliderAttachment> mixAttachment;
+    std::vector<std::unique_ptr<SliderAttachment>> barAttachments;
     std::unique_ptr<ComboBoxAttachment> bandSlopeAttachment;
     std::unique_ptr<ButtonAttachment> retriggerAttachment, soloAttachment, bandButtonAttachment, detectorMonitorAttachment;
     std::unique_ptr<juce::ParameterAttachment> rateAttachment, triggerAttachment, curveAttachment;

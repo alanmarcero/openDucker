@@ -16,7 +16,7 @@ All of these plugins are in beta. The macOS and Linux builds are not up to date,
 
 - **Triggers:** Sync follows host transport. MIDI starts the curve on each note. Audio starts it when the detector crosses Threshold. Audio uses the sidechain input, or the main input when no sidechain is connected.
 - **Audition** plays a short impact through the curve and effects. The two booth speakers pulse with each host beat in all three trigger modes and hold when playback stops. Without transport data they follow the audio sample clock.
-- **Curves:** Choose from 16 shapes. Set the cycle to 1/8, 1/4, 1/2, or 1/1. Drag the slope handle to shape recovery. Double-click it to reset. Shift moves the curve against the beat.
+- **Curves:** Choose from 16 shapes. Set the cycle to 1/8, 1/4, 1/2, or 1/1. Set Slope with its bar or drag the slope handle to shape recovery. Double-click the handle to reset it. Shift moves the curve against the beat.
 - **Retrigger:** Choose whether a new trigger restarts a running curve. When off, new triggers wait until the curve ends.
 - **Audio detection:** Set Threshold from −60 to 0 dB. Detector HPF and LPF isolate the trigger range. Listen monitors the filtered detector signal. Set either filter to Off to bypass it. Off is at the left end of the HPF and the right end of the LPF.
 - **Low-band ducking:** Turn on Low band to duck frequencies below a selected point from 30 Hz to 1 kHz. Use the headphone control to solo that band.

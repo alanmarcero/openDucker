@@ -412,13 +412,18 @@ void CurveDisplay::paint(juce::Graphics& g) {
         g.fillRect(playheadX, 0.0f, 2.0f, height);
     }
 
-    // Draggable slope handle
+    // Draggable slope handle. It widens to show the slope value while dragging.
     const float edge = handleX();
-    const auto handle = juce::Rectangle<float>(32, 28).withRightX(std::min(width - 2, std::max(34.0f, edge - 2))).withY(6);
+    const float handleWidth = dragging ? 52.0f : 32.0f;
+    const auto handle = juce::Rectangle<float>(handleWidth, 28).withRightX(std::min(width - 2, std::max(handleWidth + 2, edge - 2))).withY(6);
     g.setColour(look::panel.brighter(0.15f));
     g.fillRoundedRectangle(handle, 4);
     g.setColour(look::muted.withAlpha(0.4f));
     g.drawRoundedRectangle(handle, 4, 1);
+    if(dragging) {
+        drawText(g, owner.parameters.getParameter("length")->getCurrentValueAsText(), handle, 13.0f, look::paper);
+        return;
+    }
     g.setColour(look::paper);
     for(int line = -1; line <= 1; ++line)
         g.fillRect(handle.getCentreX() + static_cast<float>(line) * 5.0f - 1, handle.getY() + 6, 2.0f, 16.0f);
@@ -470,6 +475,7 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
 
     configureBar(band, "bandFrequency", "Band", "Band split frequency. With Low band on, only frequencies below this point duck.");
     configureBar(shift, "shift", "Shift", "Offset the curve against the beat. In MIDI and Audio modes this delays the curve after each trigger.");
+    configureBar(slope, "length", "Slope", "How much of the cycle the curve takes to recover. You can also drag the handle on the display.");
     configureBar(tension, "tension", "Tension", "Warp the active ducking curve between snappy concave (-100%) and tight hold (+100%).");
     tension.setDoubleClickReturnValue(true, 0);
     configureBar(floor, "floor", "Floor", "Minimum gain floor at the bottom of the ducking curve (0% = full mute, 100% = no ducking).");
@@ -503,14 +509,6 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
         }});
     detectorHpf.setDoubleClickReturnValue(true, 0);
     detectorLpf.setDoubleClickReturnValue(true, 0);
-    detectorHpfLabel.setComponentID("detectorHpfLabel");
-    detectorLpfLabel.setComponentID("detectorLpfLabel");
-    for(auto* label : {&detectorHpfLabel, &detectorLpfLabel}) {
-        label->setFont(juce::FontOptions(9.0f, juce::Font::bold));
-        label->setJustificationType(juce::Justification::centredLeft);
-        label->setColour(juce::Label::textColourId, look::muted);
-        content.addAndMakeVisible(*label);
-    }
     detectorMonitorButton.setComponentID("detectorMonitor");
     detectorMonitorButton.setClickingTogglesState(true);
     detectorMonitorButton.setTooltip("Listen to the filtered detector input in place of the processed output.");
@@ -599,14 +597,7 @@ void DuckerEditor::configureBar(juce::Slider& slider, const char* id, const juce
     // A click without a drag opens this text box for typing.
     // The theme creates the box, so the bar must be in the editor first.
     slider.setTextBoxStyle(juce::Slider::TextBoxLeft, false, 0, 0);
-    auto attachment = std::make_unique<SliderAttachment>(owner.parameters, id, slider);
-    if(juce::String(id) == "bandFrequency") bandAttachment = std::move(attachment);
-    else if(juce::String(id) == "shift") shiftAttachment = std::move(attachment);
-    else if(juce::String(id) == "tension") tensionAttachment = std::move(attachment);
-    else if(juce::String(id) == "floor") floorAttachment = std::move(attachment);
-    else if(juce::String(id) == "detectorHpf") detectorHpfAttachment = std::move(attachment);
-    else if(juce::String(id) == "detectorLpf") detectorLpfAttachment = std::move(attachment);
-    else thresholdAttachment = std::move(attachment);
+    barAttachments.push_back(std::make_unique<SliderAttachment>(owner.parameters, id, slider));
 }
 
 void DuckerEditor::setChoice(const char* id, int index) {
@@ -672,25 +663,24 @@ void DuckerEditor::resized() {
     retrigger.setBounds(area(892, 8, 40, 40));
     menu.setBounds(area(940, 8, 40, 40));
 
-    display.setBounds(area(354, 54, 630, 290));
+    display.setBounds(area(354, 54, 630, 252));
 
-    previousBank.setBounds(area(354, 352, 42, 40));
-    previous.setBounds(area(400, 352, 42, 40));
-    shift.setBounds(area(446, 352, 88, 40));
-    tension.setBounds(area(538, 352, 98, 40));
-    floor.setBounds(area(640, 352, 84, 40));
-    threshold.setBounds(area(728, 352, 164, 40));
-    next.setBounds(area(896, 352, 42, 40));
-    nextBank.setBounds(area(942, 352, 42, 40));
+    previousBank.setBounds(area(354, 312, 40, 40));
+    previous.setBounds(area(398, 312, 40, 40));
+    shift.setBounds(area(442, 312, 104, 40));
+    slope.setBounds(area(550, 312, 104, 40));
+    tension.setBounds(area(658, 312, 128, 40));
+    floor.setBounds(area(790, 312, 106, 40));
+    next.setBounds(area(900, 312, 40, 40));
+    nextBank.setBounds(area(944, 312, 40, 40));
 
     for(size_t i = 0; i < curveButtons.size(); ++i)
-        curveButtons[i]->setBounds(area(354 + static_cast<float>(i % 8) * 79, i < 8 ? 398 : 450, 74, 44));
+        curveButtons[i]->setBounds(area(354 + static_cast<float>(i % 8) * 79, i < 8 ? 358 : 404, 74, 40));
 
-    detectorHpfLabel.setBounds(area(354, 500, 218, 13));
-    detectorHpf.setBounds(area(354, 513, 218, 30));
-    detectorLpfLabel.setBounds(area(588, 500, 218, 13));
-    detectorLpf.setBounds(area(588, 513, 218, 30));
-    detectorMonitorButton.setBounds(area(836, 502, 148, 40));
+    threshold.setBounds(area(762, 450, 222, 40));
+    detectorHpf.setBounds(area(354, 496, 236, 40));
+    detectorLpf.setBounds(area(594, 496, 236, 40));
+    detectorMonitorButton.setBounds(area(834, 496, 150, 40));
 
     effectsPanel.setBounds(area(22, 552, 962, 198));
 }
@@ -793,7 +783,7 @@ void DuckerEditor::paint(juce::Graphics& g) {
 
     // Subtle divider between left column and right tools
     g.setColour(look::muted.withAlpha(0.18f));
-    g.drawVerticalLine(juce::roundToInt(342 * s), 16 * s + dy, 498 * s + dy);
+    g.drawVerticalLine(juce::roundToInt(342 * s), 16 * s + dy, 536 * s + dy);
     if(effectsExpanded) g.drawHorizontalLine(juce::roundToInt(546 * s + dy), 22 * s, 984 * s);
 }
 

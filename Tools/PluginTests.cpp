@@ -53,6 +53,12 @@ void save(juce::Component& editor, const juce::File& directory, const juce::Stri
     stream->setPosition(0); stream->truncate();
     require(juce::PNGImageFormat {}.writeImageToStream(editor.createComponentSnapshot(editor.getLocalBounds(), true, 2.0f), *stream), "Screenshot failed");
 }
+int changedPixels(const juce::Image& before, const juce::Image& after, juce::Rectangle<int> area) {
+    int count = 0;
+    for(int y = area.getY(); y < area.getBottom(); ++y) for(int x = area.getX(); x < area.getRight(); ++x)
+        if(before.getPixelAt(x, y) != after.getPixelAt(x, y)) ++count;
+    return count;
+}
 int yellowPixels(const juce::Image& image, juce::Rectangle<int> area) {
     int count = 0;
     for(int y = area.getY(); y < area.getBottom(); ++y) for(int x = area.getX(); x < area.getRight(); ++x) {
@@ -609,10 +615,16 @@ void testControls(DuckerProcessor& p, juce::AudioProcessorEditor& editor) {
     const float width = static_cast<float>(display.getWidth());
     display.mouseDown(event({width - 3, 100}, false));
     display.mouseDrag(event({width * 0.5f, 100}, true));
+    const auto whileDragging = display.createComponentSnapshot(display.getLocalBounds());
     display.mouseUp(event({width * 0.5f, 100}, true));
     require(std::abs(get(p, "length") - 50) < 1, "Dragging the handle does not set the slope length");
+    const auto grip = juce::Rectangle<int>(juce::roundToInt(width * 0.5f) - 56, 6, 56, 28);
+    require(changedPixels(whileDragging, display.createComponentSnapshot(display.getLocalBounds()), grip) > 30, "The slope grip shows no value while dragging");
     display.mouseDoubleClick(event({width * 0.5f, 100}, false));
     require(get(p, "length") == 100, "Double-clicking the handle does not reset the slope length");
+    auto& slopeBar = control<juce::Slider>(editor, "length");
+    slopeBar.setValue(60, juce::sendNotificationSync);
+    require(std::abs(get(p, "length") - 60) < 0.1f && slopeBar.getTextFromValue(60) == "60%", "The Slope bar is disconnected");
     for(const auto* id : {"bandFrequency", "shift", "tension", "floor", "threshold", "detectorHpf", "detectorLpf"}) {
         const auto& bar = control<juce::Slider>(editor, id);
         require(!bar.getSliderSnapsToMousePosition() && bar.isTextBoxEditable(), "A bar jumps to the click point or takes no typed value");
@@ -635,7 +647,7 @@ void testControls(DuckerProcessor& p, juce::AudioProcessorEditor& editor) {
     require(lowPass.valueToProportionOfLength(0) > 0.999 && lowPass.valueToProportionOfLength(20000) < 0.99 && lowPass.valueToProportionOfLength(1) < 0.001,
         "The detector LPF does not put Off at the right end");
     set(p, "bandOn", 0); set(p, "bandSolo", 0); set(p, "shift", 0); set(p, "tension", 0); set(p, "floor", 0); set(p, "bandSlope", 1); set(p, "retrigger", 1);
-    set(p, "threshold", -24);
+    set(p, "threshold", -24); set(p, "length", 100);
 }
 
 void renderCycle(DuckerProcessor& processor, Host& host, int cycleSamples, bool sidechain, float mainLevel, int clickSamples) {
@@ -917,7 +929,7 @@ int main(int argc, char** argv) {
         save(*editor, output, "openDucker-sync.png");
         const auto image = editor->createComponentSnapshot(editor->getLocalBounds());
         require(yellowPixels(image, {357, 99, 631, 295}) > 600, "The display does not draw the curve");
-        require(yellowPixels(image, {357, 449, 631, 95}) > 100, "The selected curve button is not highlighted");
+        require(yellowPixels(image, {357, 402, 631, 86}) > 100, "The selected curve button is not highlighted");
         set(p, "mix", 79); set(p, "curve", 4); set(p, "length", 72); set(p, "trigger", 2); set(p, "rate", 1);
         host.position.setIsPlaying(false);
         p.reset(); render<float>(p, host, 0, 22500 * 3, false);
