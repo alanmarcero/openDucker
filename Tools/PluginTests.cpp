@@ -858,6 +858,7 @@ void testPresetNavigation(DuckerProcessor& processor, juce::AudioProcessorEditor
     require(processor.deletePreset("user:Edited Pump", error), "Could not delete the test preset");
     directory.deleteRecursively();
     processor.setCurrentProgram(0);
+    suiteBar.refresh();
 }
 
 void testSlotUndo() {
