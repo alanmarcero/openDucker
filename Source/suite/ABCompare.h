@@ -1,11 +1,12 @@
 #pragma once
-#include <juce_audio_processors/juce_audio_processors.h>
+#include "PresetLibrary.h"
 
 namespace suite {
 /// Two full parameter slots. The audible slot tracks the live parameters.
+/// Each slot also keeps its preset key and edited flag.
 class ABCompare {
 public:
-    explicit ABCompare(juce::AudioProcessorValueTreeState&);
+    ABCompare(juce::AudioProcessorValueTreeState&, PresetLibrary&);
     bool isA() const noexcept { return activeIsA; }
     void captureActive();
     bool selectA();
@@ -16,9 +17,15 @@ public:
     void readTree(const juce::ValueTree&);
     void resetBothFromCurrent();
 private:
-    void load(const juce::ValueTree&);
+    struct Slot {
+        juce::ValueTree state;
+        juce::String presetKey;
+        bool presetEdited = false;
+    };
+    void load(const Slot&);
     juce::AudioProcessorValueTreeState& state;
-    juce::ValueTree slotA, slotB;
+    PresetLibrary& presets;
+    Slot slotA, slotB;
     bool activeIsA = true;
 };
 }

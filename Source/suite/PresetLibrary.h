@@ -39,7 +39,10 @@ public:
     std::vector<PresetEntry> filtered(const juce::String& search) const;
     std::optional<PresetEntry> find(const juce::String& key) const;
     const juce::String& activeKey() const noexcept { return active; }
-    void setActiveKey(juce::String key);
+    void setActiveKey(juce::String key, bool isEdited = false);
+    // True after the first edit since the active preset loaded or saved.
+    bool isEdited() const noexcept { return edited; }
+    void markEdited() noexcept { edited = true; }
     juce::String activeName() const;
 
     static juce::String sanitize(juce::String name);
@@ -55,5 +58,6 @@ private:
     std::vector<PresetEntry> users;
     juce::StringArray favorites;
     juce::String active;
+    bool edited = false;
 };
 }

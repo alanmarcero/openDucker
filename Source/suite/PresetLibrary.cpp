@@ -97,6 +97,7 @@ bool PresetLibrary::saveUser(const juce::String& requested, juce::String& error)
     const auto xml = state.copyState().createXml();
     if(xml == nullptr || !xml->writeTo(file)) { error = "Could not write the preset."; return false; }
     active = "user:" + name;
+    edited = false;
     rescan();
     return true;
 }
@@ -176,7 +177,10 @@ std::optional<PresetEntry> PresetLibrary::find(const juce::String& key) const {
     return std::nullopt;
 }
 
-void PresetLibrary::setActiveKey(juce::String key) { active = std::move(key); }
+void PresetLibrary::setActiveKey(juce::String key, bool isEdited) {
+    active = std::move(key);
+    edited = isEdited;
+}
 
 juce::String PresetLibrary::activeName() const {
     if(auto entry = find(active)) return entry->name;

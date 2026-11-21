@@ -120,14 +120,16 @@ DuckerProcessor::DuckerProcessor()
           .withInput("Sidechain", juce::AudioChannelSet::stereo(), false)),
       parameters(*this, nullptr, "openDucker", layout()),
       parameterUndo(*this, parameters),
-      abCompare(parameters),
-      presetLibrary(parameters, "openDucker") {
+      presetLibrary(parameters, "openDucker"),
+      abCompare(parameters, presetLibrary) {
     for(size_t i = 0; i < ids.size(); ++i) values[i] = parameters.getRawParameterValue(ids[i]);
     for(size_t i = 0; i < fxIds.size(); ++i) fxParameters[i] = parameters.getRawParameterValue(fxIds[i]);
     for(auto& bin : inputBins) bin.store(0);
     for(auto& bin : outputBins) bin.store(0);
     for(auto& bin : sourceBins) bin.store(0);
     presetLibrary.setFactory(duck::makeFactoryPresets(parameters));
+    abCompare.resetBothFromCurrent();
+    parameterUndo.onEdit = [this] { presetLibrary.markEdited(); };
 }
 
 void DuckerProcessor::prepareToPlay(double rate, int) {
@@ -441,7 +443,7 @@ private:
 
 DuckerProcessor::SessionSnapshot DuckerProcessor::snap() {
     abCompare.captureActive();
-    return {parameters.copyState(), abCompare.toTree(), currentProgram, presetLibrary.activeKey()};
+    return {parameters.copyState(), abCompare.toTree(), currentProgram, presetLibrary.activeKey(), presetLibrary.isEdited()};
 }
 
 void DuckerProcessor::restoreSnapshot(const SessionSnapshot& snapshot) {
@@ -449,7 +451,7 @@ void DuckerProcessor::restoreSnapshot(const SessionSnapshot& snapshot) {
     parameters.replaceState(snapshot.parameters.createCopy());
     abCompare.readTree(snapshot.ab);
     currentProgram = juce::jlimit(0, std::max(0, getNumPrograms() - 1), snapshot.program);
-    presetLibrary.setActiveKey(snapshot.presetKey);
+    presetLibrary.setActiveKey(snapshot.presetKey, snapshot.presetEdited);
     parameterUndo.resume();
     resetEffects.store(true);
 }
@@ -529,6 +531,7 @@ void DuckerProcessor::getStateInformation(juce::MemoryBlock& data) {
     auto state = parameters.copyState();
     state.setProperty("program", currentProgram, nullptr);
     state.setProperty("presetKey", presetLibrary.activeKey(), nullptr);
+    state.setProperty("presetEdited", presetLibrary.isEdited(), nullptr);
     state.setProperty("editorWidth", editorWidth.load(), nullptr);
     state.setProperty("effectsShown", effectsShown.load(), nullptr);
     state.addChild(abCompare.toTree(), -1, nullptr);
@@ -542,10 +545,12 @@ void DuckerProcessor::setStateInformation(const void* data, int size) {
         const bool hasProgram = state.hasProperty("program");
         const int program = hasProgram ? static_cast<int>(state.getProperty("program")) : currentProgram;
         const auto presetKey = state.getProperty("presetKey").toString();
+        const bool presetEdited = state.getProperty("presetEdited");
         editorWidth.store(static_cast<int>(state.getProperty("editorWidth", 1000)));
         effectsShown.store(static_cast<bool>(state.getProperty("effectsShown", true)));
         state.removeProperty("program", nullptr);
         state.removeProperty("presetKey", nullptr);
+        state.removeProperty("presetEdited", nullptr);
         state.removeProperty("editorWidth", nullptr);
         state.removeProperty("effectsShown", nullptr);
         for(const auto* id : fxIds) if(!state.getChildWithProperty("id", id).isValid()) {
@@ -563,10 +568,10 @@ void DuckerProcessor::setStateInformation(const void* data, int size) {
         parameterUndo.suspend();
         parameters.replaceState(state);
         parameterUndo.resume();
+        if(presetKey.isNotEmpty()) presetLibrary.setActiveKey(presetKey, presetEdited);
         if(suite.isValid()) abCompare.readTree(suite);
         else abCompare.resetBothFromCurrent();
         if(hasProgram) currentProgram = juce::jlimit(0, std::max(0, getNumPrograms() - 1), program);
-        if(presetKey.isNotEmpty()) presetLibrary.setActiveKey(presetKey);
         parameterUndo.clearHistory();
         resetEffects.store(true);
     }

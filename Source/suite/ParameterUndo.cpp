@@ -67,5 +67,6 @@ void ParameterUndo::parameterGestureChanged(int parameterIndex, bool gestureIsSt
     if(std::abs(end - gestureStart) < 1.0e-6f) return;
     undo.beginNewTransaction(parameter->getName(48));
     undo.perform(new ValueAction(*this, gestureId, gestureStart, end));
+    if(onEdit) onEdit();
 }
 }

@@ -22,6 +22,8 @@ public:
     bool canUndo() const;
     bool canRedo() const;
     void clearHistory();
+    // Called after each recorded parameter edit.
+    std::function<void()> onEdit;
 
 private:
     void parameterValueChanged(int, float) override {}

@@ -23,6 +23,7 @@ private:
     SuiteHost& host;
     Palette palette;
     juce::TextButton undoButton {"Undo"}, redoButton {"Redo"}, aButton {"A"}, bButton {"B"},
-        aToBButton {"A>B"}, bToAButton {"B>A"}, presetButton {"Presets"}, favoriteButton {"Fav"};
+        aToBButton {"A>B"}, bToAButton {"B>A"}, presetButton {"Presets"}, favoriteButton {"Fav"},
+        previousPresetButton {"<"}, nextPresetButton {">"};
 };
 }

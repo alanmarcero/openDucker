@@ -811,6 +811,55 @@ void testTriggerFeedback() {
     p.setPlayHead(nullptr);
 }
 
+void testPresetNavigation(DuckerProcessor& processor, juce::AudioProcessorEditor& editor) {
+    processor.selectSlotA();
+    processor.setCurrentProgram(15);
+    auto& suiteBar = control<suite::SuiteBar>(editor, "suiteBar");
+    auto& presetName = control<juce::Button>(editor, "presets");
+    auto& previous = control<juce::Button>(editor, "presetPrevious");
+    auto& next = control<juce::Button>(editor, "presetNext");
+    require(next.getWidth() == 40 && next.getHeight() == 40 && next.getTooltip() == "Next preset" && previous.getTooltip() == "Previous preset",
+        "The preset step buttons are missing or mislabeled");
+    next.onClick();
+    require(processor.getCurrentProgram() == 0, "Next preset does not wrap to the first preset");
+    previous.onClick();
+    require(processor.getCurrentProgram() == 15, "Previous preset does not wrap to the last preset");
+
+    auto* mix = processor.parameters.getParameter("mix");
+    mix->beginChangeGesture(); mix->setValueNotifyingHost(0.3f); mix->endChangeGesture();
+    suiteBar.refresh();
+    require(presetName.getButtonText() == processor.getProgramName(15) + " *", "An edit does not mark the preset name");
+
+    processor.copyAToB();
+    processor.selectSlotB();
+    processor.setCurrentProgram(2);
+    processor.selectSlotA();
+    suiteBar.refresh();
+    require(presetName.getButtonText() == processor.getProgramName(15) + " *", "Slot A shows slot B's preset name");
+    processor.selectSlotB();
+    suiteBar.refresh();
+    require(presetName.getButtonText() == "Trance Gate", "Slot B lost its preset name");
+
+    juce::MemoryBlock state;
+    processor.getStateInformation(state);
+    DuckerProcessor recalled;
+    recalled.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+    require(recalled.presets().activeName() == "Trance Gate" && !recalled.presets().isEdited(), "Session recall loses the active slot's preset");
+    recalled.selectSlotA();
+    require(recalled.presets().activeKey() == recalled.presets().factoryKey(15) && recalled.presets().isEdited(),
+        "Session recall loses slot A's preset or edited mark");
+
+    const auto directory = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("openDucker-edited-test");
+    processor.presets().setDirectory(directory);
+    processor.selectSlotA();
+    juce::String error;
+    require(processor.presets().isEdited() && processor.savePreset("Edited Pump", error) && !processor.presets().isEdited(),
+        "Saving does not clear the edited mark");
+    require(processor.deletePreset("user:Edited Pump", error), "Could not delete the test preset");
+    directory.deleteRecursively();
+    processor.setCurrentProgram(0);
+}
+
 void testEditorRecall() {
     DuckerProcessor first;
     {
@@ -981,6 +1030,7 @@ int main(int argc, char** argv) {
         testEffectsControls(p, *editor);
         testEqDetents(p, *editor);
         testSuite(p, *editor);
+        testPresetNavigation(p, *editor);
         testEditorRecall();
         testTriggerFeedback();
         {

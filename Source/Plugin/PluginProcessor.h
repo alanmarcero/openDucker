@@ -56,8 +56,8 @@ public:
 
     juce::AudioProcessorValueTreeState parameters;
     suite::ParameterUndo parameterUndo;
-    suite::ABCompare abCompare;
     suite::PresetLibrary presetLibrary;
+    suite::ABCompare abCompare;
     /// Peak of the input, output, and beat-locked source at each position of the cycle.
     std::array<std::atomic<float>, displayBins> inputBins, outputBins, sourceBins;
     std::atomic<bool> sourceIsSidechain {false};
@@ -92,6 +92,7 @@ private:
         juce::ValueTree ab;
         int program = 0;
         juce::String presetKey;
+        bool presetEdited = false;
     };
     class SnapshotAction;
     static juce::AudioProcessorValueTreeState::ParameterLayout layout();

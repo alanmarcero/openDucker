@@ -1,4 +1,5 @@
 #include "SuiteBar.h"
+#include <algorithm>
 #include <functional>
 #include <vector>
 
@@ -145,6 +146,7 @@ private:
 }
 
 SuiteBar::SuiteBar(SuiteHost& hostIn, Palette paletteIn) : host(hostIn), palette(paletteIn) {
+    setComponentID("suiteBar");
     undoButton.setComponentID("undo"); undoButton.setTooltip("Undo the last parameter edit.");
     redoButton.setComponentID("redo"); redoButton.setTooltip("Redo the last undone edit.");
     aButton.setComponentID("slotA"); aButton.setTooltip("Recall slot A.");
@@ -153,6 +155,20 @@ SuiteBar::SuiteBar(SuiteHost& hostIn, Palette paletteIn) : host(hostIn), palette
     bToAButton.setComponentID("copyBtoA"); bToAButton.setTooltip("Copy slot B into slot A.");
     presetButton.setComponentID("presets"); presetButton.setTooltip("Browse factory and user presets.");
     favoriteButton.setComponentID("favorite"); favoriteButton.setTooltip("Mark the current preset as a favorite.");
+    previousPresetButton.setComponentID("presetPrevious"); previousPresetButton.setTooltip("Previous preset");
+    nextPresetButton.setComponentID("presetNext"); nextPresetButton.setTooltip("Next preset");
+    // Steps through the browser's list order and wraps at the ends.
+    for(auto* button : {&previousPresetButton, &nextPresetButton}) {
+        button->onClick = [this, step = button == &nextPresetButton ? 1 : -1] {
+            const auto entries = host.presets().filtered({});
+            const auto active = std::find_if(entries.begin(), entries.end(), [this](const PresetEntry& entry) { return entry.key == host.presets().activeKey(); });
+            const int count = static_cast<int>(entries.size()), found = static_cast<int>(std::distance(entries.begin(), active));
+            // With no active entry, Next picks the first preset and Previous the last.
+            const int from = found == count && step > 0 ? -1 : found;
+            host.loadPreset(entries[static_cast<size_t>((from + step + count) % count)].key);
+            refresh();
+        };
+    }
     undoButton.onClick = [this] { host.undoEdit(); refresh(); };
     redoButton.onClick = [this] { host.redoEdit(); refresh(); };
     aButton.onClick = [this] { host.selectSlotA(); refresh(); };
@@ -165,7 +181,8 @@ SuiteBar::SuiteBar(SuiteHost& hostIn, Palette paletteIn) : host(hostIn), palette
         if(key.isNotEmpty()) host.setPresetFavorite(key, !host.presets().isFavorite(key));
         refresh();
     };
-    for(auto* button : {&undoButton, &redoButton, &aButton, &bButton, &aToBButton, &bToAButton, &presetButton, &favoriteButton}) {
+    for(auto* button : {&undoButton, &redoButton, &aButton, &bButton, &aToBButton, &bToAButton, &presetButton, &favoriteButton,
+             &previousPresetButton, &nextPresetButton}) {
         button->setClickingTogglesState(false);
         addAndMakeVisible(*button);
     }
@@ -193,7 +210,10 @@ void SuiteBar::resized() {
     aToBButton.setBounds(take(54));
     bToAButton.setBounds(take(54));
     row.removeFromLeft(gap);
+    previousPresetButton.setBounds(take(40));
     favoriteButton.setBounds(row.removeFromRight(48));
+    row.removeFromRight(gap);
+    nextPresetButton.setBounds(row.removeFromRight(40));
     row.removeFromRight(gap);
     presetButton.setBounds(row);
 }
@@ -204,7 +224,7 @@ void SuiteBar::refresh() {
     aButton.setToggleState(host.slotIsA(), juce::dontSendNotification);
     bButton.setToggleState(!host.slotIsA(), juce::dontSendNotification);
     const auto key = host.presets().activeKey();
-    presetButton.setButtonText(host.presets().activeName());
+    presetButton.setButtonText(host.presets().activeName() + (host.presets().isEdited() ? " *" : ""));
     favoriteButton.setToggleState(key.isNotEmpty() && host.presets().isFavorite(key), juce::dontSendNotification);
     favoriteButton.setEnabled(key.isNotEmpty());
 }
