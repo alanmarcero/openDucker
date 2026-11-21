@@ -489,6 +489,7 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
     floor.setDoubleClickReturnValue(true, 0);
     configureBar(threshold, "threshold", "Threshold", "Audio trigger level. Uses the sidechain input when connected, otherwise the main input.");
     threshold.setDoubleClickReturnValue(true, -24);
+    configureBar(smoothing, "smoothing", "Smoothing", "Softens the gain changes of every duck: Off, Low (1 ms), Medium (3 ms) or High (8 ms).");
     configureBar(lookahead, "lookahead", "Lookahead", "Delays the audio by up to 5 ms so each duck reaches its floor before the transient. "
         "The plugin reports this delay to the host as latency. Off adds no latency.");
     bandSlope.setComponentID("bandSlope");
@@ -549,7 +550,7 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
     retrigger.setComponentID("retrigger"); retrigger.setClickingTogglesState(true);
     retrigger.setTooltip("Retrigger: when on, incoming triggers restart an active curve immediately.");
     solo.setComponentID("solo"); solo.setClickingTogglesState(true); solo.setTooltip("Listen to the isolated ducked low band.");
-    menu.setComponentID("menu"); menu.setTooltip("Trigger smoothing and utility options.");
+    menu.setComponentID("menu"); menu.setTooltip("Reset slope and shift, or show the version and license.");
     menu.onClick = [this] { showMenu(); };
     previous.setComponentID("previous"); previous.setTooltip("Previous curve."); previous.onClick = [this] { stepCurve(-1); };
     next.setComponentID("next"); next.setTooltip("Next curve."); next.onClick = [this] { stepCurve(1); };
@@ -557,7 +558,7 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
     nextBank.setComponentID("nextBank"); nextBank.setTooltip("Next row of curves."); nextBank.onClick = [this] { stepCurve(8); };
     retrigger.setTitle("Retrigger curve");
     solo.setTitle("Solo low band");
-    menu.setTitle("Trigger settings");
+    menu.setTitle("Options");
     previous.setTitle("Previous curve");
     next.setTitle("Next curve");
     previousBank.setTitle("Previous row of curves");
@@ -623,15 +624,9 @@ void DuckerEditor::stepCurve(int delta) {
 
 void DuckerEditor::showMenu() {
     juce::PopupMenu popup;
-    const int smoothing = static_cast<int>(owner.parameters.getRawParameterValue("smoothing")->load());
-    popup.addSectionHeader("Trigger smoothing");
-    const juce::StringArray names {"Off", "Low", "Medium", "High"};
-    for(int i = 0; i < names.size(); ++i) popup.addItem(10 + i, names[i], true, i == smoothing);
-    popup.addSeparator();
     popup.addItem(20, "Reset slope and shift");
     popup.addItem(21, "About openDucker 2");
     popup.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(menu), [this](int result) {
-        if(result >= 10 && result < 14) setChoice("smoothing", result - 10);
         if(result == 20) for(const auto* id : {"length", "shift"}) {
             auto* parameter = owner.parameters.getParameter(id);
             parameter->beginChangeGesture(); parameter->setValueNotifyingHost(parameter->getDefaultValue()); parameter->endChangeGesture();
@@ -686,6 +681,7 @@ void DuckerEditor::resized() {
     for(size_t i = 0; i < curveButtons.size(); ++i)
         curveButtons[i]->setBounds(area(354 + static_cast<float>(i % 8) * 79, i < 8 ? 358 : 404, 74, 40));
 
+    smoothing.setBounds(area(354, 450, 200, 40));
     lookahead.setBounds(area(558, 450, 200, 40));
     threshold.setBounds(area(762, 450, 222, 40));
     detectorHpf.setBounds(area(354, 496, 236, 40));

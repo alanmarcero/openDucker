@@ -62,8 +62,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout DuckerProcessor::layout() {
     const auto toggle = [&](const char* id, const char* name, bool initial, int version = 1) {
         result.add(std::make_unique<juce::AudioParameterBool>(juce::ParameterID {id, version}, name, initial));
     };
+    // Typed choice names ignore case.
     const auto choice = [&](const char* id, const char* name, juce::StringArray choices, int initial, int version = 1) {
-        result.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID {id, version}, name, choices, initial));
+        result.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID {id, version}, name, choices, initial,
+            juce::AudioParameterChoiceAttributes {}.withValueFromStringFunction([choices](const juce::String& typed) { return choices.indexOf(typed.trim(), true); })));
     };
     juce::StringArray curves;
     for(const auto* name : duck::curveNames) curves.add(name);

@@ -669,6 +669,11 @@ void testControls(DuckerProcessor& p, juce::AudioProcessorEditor& editor) {
     require(std::abs(get(p, "lookahead") - 2.5f) < 0.01f && lookaheadBar.getTextFromValue(0) == "Off" && lookaheadBar.getTextFromValue(2.5) == "2.5 ms"
         && lookaheadBar.getTooltip().contains("latency"), "The Lookahead bar is missing, disconnected or silent about latency");
     set(p, "lookahead", 0);
+    auto& smoothingBar = control<juce::Slider>(editor, "smoothing");
+    smoothingBar.setValue(2, juce::sendNotificationSync);
+    require(std::abs(get(p, "smoothing") - 2) < 0.01f && smoothingBar.getTextFromValue(2) == "Medium" && std::abs(smoothingBar.getValueFromText("high") - 3) < 0.01,
+        "The Smoothing bar is missing or disconnected");
+    set(p, "smoothing", 1);
     auto* typedBox = dynamic_cast<juce::Label*>(thresholdBar.getChildComponent(0));
     require(typedBox != nullptr, "The threshold bar has no text box");
     typedBox->setText("-18 dB", juce::sendNotificationSync);
