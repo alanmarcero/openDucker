@@ -770,6 +770,30 @@ void testParameterText() {
     require(bass->getText(bass->convertTo0to1(-0.01f), 0) == "0.0 dB", "Gain text shows -0.0 dB");
 }
 
+void testTriggerFeedback() {
+    DuckerProcessor p; Host host;
+    host.position.setIsPlaying(false); host.position.setBpm(120); host.position.setPpqPosition(0);
+    p.setPlayHead(&host); set(p, "smoothing", 0); set(p, "trigger", 2);
+    p.prepareToPlay(sampleRate, 4800);
+    std::unique_ptr<juce::AudioProcessorEditor> editor(p.createEditor());
+    auto* display = dynamic_cast<CurveDisplay*>(find(*editor, "display"));
+    require(display != nullptr, "The curve display is missing");
+    juce::AudioBuffer<float> audio(2, 4800); juce::MidiBuffer midi;
+    for(int i = 0; i < 4800; ++i) { const float level = i < 200 ? 0.001f : 0.5f; audio.setSample(0, i, level); audio.setSample(1, i, level); }
+    p.processBlock(audio, midi);
+    require(p.triggerCount.load() == 1 && p.detectorPeak.load() > 0.4f, "Audio triggers and the detector level do not reach the editor");
+    display->tick();
+    require(display->isFlashing() && p.detectorPeak.load() < 1e-9f, "The display does not flash on a trigger or read the detector peak");
+    set(p, "trigger", 0);
+    midi.addEvent(juce::MidiMessage::noteOn(1, 36, 1.0f), 10);
+    p.processBlock(audio, midi);
+    require(p.triggerCount.load() == 1, "Sync mode counts ignored triggers");
+    set(p, "trigger", 1);
+    p.processBlock(audio, midi);
+    require(p.triggerCount.load() == 2, "MIDI triggers do not reach the editor");
+    p.setPlayHead(nullptr);
+}
+
 void testEditorRecall() {
     DuckerProcessor first;
     {
@@ -941,6 +965,7 @@ int main(int argc, char** argv) {
         testEqDetents(p, *editor);
         testSuite(p, *editor);
         testEditorRecall();
+        testTriggerFeedback();
         {
             // README and OpenVST Manager show this capture: the editor at the size it opens,
             // on the first factory patch, not the Sync demo configured below.
@@ -969,6 +994,7 @@ int main(int argc, char** argv) {
         set(p, "mix", 79); set(p, "curve", 4); set(p, "length", 72); set(p, "trigger", 2); set(p, "rate", 1);
         host.position.setIsPlaying(false);
         p.reset(); render<float>(p, host, 0, 22500 * 3, false);
+        control<CurveDisplay>(*editor, "display").tick();
         save(*editor, output, "openDucker-audio.png");
         set(p, "trigger", 1); set(p, "curve", 14); set(p, "bandOn", 1); set(p, "bandFrequency", 150); set(p, "mix", 100); set(p, "length", 100);
         p.reset(); render<float>(p, host, 0, 22500 * 3, true);

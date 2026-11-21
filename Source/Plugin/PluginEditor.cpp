@@ -8,6 +8,8 @@ constexpr int contentShift = 44;
 constexpr int collapsedHeight = 552 + contentShift;
 constexpr int expandedHeight = 760 + contentShift;
 constexpr int minimumWidth = 700, maximumWidth = 2000;
+// Editor refreshes per second; a trigger flash lasts 200 ms and the detector peak holds for 1 s.
+constexpr int refreshHz = 30, flashLength = refreshHz / 5, holdLength = refreshHz;
 
 void drawText(juce::Graphics& g, const juce::String& value, juce::Rectangle<float> bounds, float size, juce::Colour colour,
     juce::Justification alignment = juce::Justification::centred, bool bold = true) {
@@ -277,10 +279,26 @@ void CurveButton::paintButton(juce::Graphics& g, bool over, bool down) {
         juce::PathStrokeType(selected ? 2.6f : 1.8f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 }
 
-CurveDisplay::CurveDisplay(DuckerProcessor& p) : owner(p) {
+CurveDisplay::CurveDisplay(DuckerProcessor& p) : owner(p), seenTriggers(p.triggerCount.load()) {
     setComponentID("display");
     setName("Ducking curve");
-    setTooltip("Incoming audio sits behind the duck curve, locked to the host cycle. Sidechain is used when connected, otherwise the main input. Drag the handle to adjust slope length; double-click to reset.");
+    setTooltip("Incoming audio sits behind the duck curve, locked to the host cycle. Sidechain is used when connected, otherwise the main input. Drag the handle to adjust slope length; double-click to reset. "
+        "In Audio mode, the meter at the right shows the detector level against Threshold. Click the meter to clear its clip light.");
+}
+
+void CurveDisplay::tick() {
+    const int triggers = owner.triggerCount.load(std::memory_order_relaxed);
+    if(flashFrames > 0) --flashFrames;
+    if(triggers != seenTriggers) flashFrames = flashLength;
+    seenTriggers = triggers;
+
+    detectorLevel = owner.detectorPeak.exchange(0.0f, std::memory_order_relaxed);
+    if(holdFrames > 0) --holdFrames;
+    if(detectorLevel >= detectorHold || holdFrames == 0) {
+        detectorHold = detectorLevel;
+        holdFrames = holdLength;
+    }
+    clipped = clipped || detectorLevel > 1.0f;
 }
 
 float CurveDisplay::lengthFraction() const { return owner.parameters.getRawParameterValue("length")->load() * 0.01f; }
@@ -309,6 +327,8 @@ void CurveDisplay::mouseMove(const juce::MouseEvent& e) {
 void CurveDisplay::mouseDown(const juce::MouseEvent& e) {
     dragging = overHandle(e.position);
     if(dragging) owner.parameters.getParameter("length")->beginChangeGesture();
+    // A click on the detector meter clears its clip light.
+    if(!dragging && e.position.x > static_cast<float>(getWidth()) - 26.0f) clipped = false;
 }
 void CurveDisplay::setLengthFromPointer(float x) {
     const float beat = juce::jlimit(0.0f, 1.0f, x / static_cast<float>(std::max(1, getWidth())));
@@ -417,6 +437,33 @@ void CurveDisplay::paint(juce::Graphics& g) {
         const float playheadX = owner.visualBeat.load(std::memory_order_relaxed) * width;
         g.setColour(look::mint);
         g.fillRect(playheadX, 0.0f, 2.0f, height);
+    }
+
+    // A marker at the last trigger's place in the cycle fades out over 200 ms.
+    if(isFlashing()) {
+        g.setColour(look::mint.withAlpha(static_cast<float>(flashFrames) / flashLength));
+        g.fillRect(owner.triggerBeat.load(std::memory_order_relaxed) * width - 1.5f, 0.0f, 3.0f, height);
+    }
+
+    // In Audio mode, a dBFS meter shows the detector level against Threshold, with a 1 s peak hold and a clip light.
+    if(static_cast<int>(owner.parameters.getRawParameterValue("trigger")->load()) == 2) {
+        const auto meter = juce::Rectangle<float>(width - 18, 40, 10, height - 48);
+        const auto heightOf = [&](float level) {
+            return meter.getHeight() * juce::jlimit(0.0f, 1.0f, juce::Decibels::gainToDecibels(level, -60.0f) / 60.0f + 1.0f);
+        };
+        const float threshold = juce::Decibels::decibelsToGain(owner.parameters.getRawParameterValue("threshold")->load());
+        g.setColour(look::display.darker(0.4f));
+        g.fillRoundedRectangle(meter.expanded(2), 3);
+        g.setColour(look::yellow.withAlpha(static_cast<float>(flashFrames) / flashLength));
+        g.drawRoundedRectangle(meter.expanded(2), 3, 1.5f);
+        g.setColour(look::mint);
+        g.fillRect(meter.withTop(meter.getBottom() - heightOf(detectorLevel)));
+        g.setColour(look::paper);
+        g.fillRect(meter.withTop(meter.getBottom() - heightOf(detectorHold)).withHeight(1.5f));
+        g.setColour(look::yellow);
+        g.fillRect(meter.withTop(meter.getBottom() - heightOf(threshold) - 1).withHeight(2.0f).expanded(4, 0));
+        g.setColour(clipped ? look::yellow : look::muted.withAlpha(0.3f));
+        g.fillEllipse(juce::Rectangle<float>(8, 8).withCentre({meter.getCentreX(), meter.getY() - 10}));
     }
 
     // Draggable slope handle. It widens to show the slope value while dragging.
@@ -595,7 +642,7 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
     // The toggle applies the saved effects visibility and editor width.
     effectsExpanded = !owner.effectsShown.load();
     effectsToggle.onClick();
-    startTimerHz(30);
+    startTimerHz(refreshHz);
 }
 
 DuckerEditor::~DuckerEditor() { stopTimer(); setLookAndFeel(nullptr); }
@@ -637,6 +684,7 @@ void DuckerEditor::showMenu() {
 }
 
 void DuckerEditor::timerCallback() {
+    display.tick();
     display.repaint();
     suiteBar.refresh();
     if(effectsPanel.isVisible()) effectsPanel.repaint(660, 4, 306, 74);
@@ -767,7 +815,7 @@ void DuckerEditor::paint(juce::Graphics& g) {
     // Host / Trigger Sync Status Pill
     const int state = owner.syncState.load(std::memory_order_relaxed);
     const auto mode = static_cast<int>(owner.parameters.getRawParameterValue("trigger")->load());
-    const bool isSynced = (mode == 0 && state == 2) || (mode != 0 && owner.visualRunning.load(std::memory_order_relaxed));
+    const bool ledOn = (mode == 0 && state == 2) || (mode != 0 && display.isFlashing());
     const juce::String status = mode == 1 ? "MIDI Trigger" : (mode == 2 ? "Audio Trigger"
         : (state == 2 ? juce::String(owner.hostBpm.load(std::memory_order_relaxed), 1) + " BPM" : (state == 1 ? "Host Stopped" : "No Sync")));
 
@@ -778,9 +826,9 @@ void DuckerEditor::paint(juce::Graphics& g) {
     g.drawRoundedRectangle(statusPill, statusPill.getHeight() * 0.5f, 1.0f);
 
     // Status LED dot
-    g.setColour(isSynced ? look::mint : look::muted.withAlpha(0.5f));
+    g.setColour(ledOn ? look::mint : look::muted.withAlpha(0.5f));
     g.fillEllipse(statusPill.getX() + 8 * s, statusPill.getCentreY() - 3.5f * s, 7 * s, 7 * s);
-    if(isSynced) glow(g, juce::Rectangle<float>(12 * s, 12 * s).withCentre({statusPill.getX() + 11.5f * s, statusPill.getCentreY()}), look::mint.withAlpha(0.4f));
+    if(ledOn) glow(g, juce::Rectangle<float>(12 * s, 12 * s).withCentre({statusPill.getX() + 11.5f * s, statusPill.getCentreY()}), look::mint.withAlpha(0.4f));
 
     drawText(g, status, {statusPill.getX() + 18 * s, statusPill.getY(), statusPill.getWidth() - 22 * s, statusPill.getHeight()}, 11 * s, look::paper, juce::Justification::centred, false);
 

@@ -51,9 +51,9 @@ void Engine::beginBlock(Transport t, Parameters p) noexcept {
     if(p.trigger == Trigger::Sync) isRunning = true;
 }
 
-void Engine::trigger() noexcept {
-    if(parameters.trigger == Trigger::Sync) return;
-    if(isRunning && !parameters.retrigger) return;
+bool Engine::trigger() noexcept {
+    if(parameters.trigger == Trigger::Sync) return false;
+    if(isRunning && !parameters.retrigger) return false;
     // Legato retrigger: glide from the partially recovered gain into the new
     // curve over 2 ms instead of jumping to phase 0. Small gaps need no glide,
     // and a first trigger from idle must still duck on its own sample.
@@ -65,6 +65,7 @@ void Engine::trigger() noexcept {
     }
     isRunning = true;
     elapsed = 0;
+    return true;
 }
 
 double Engine::nextGain() noexcept {

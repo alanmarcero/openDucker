@@ -27,8 +27,9 @@ class Engine {
 public:
     void prepare(double sampleRate) noexcept;
     void beginBlock(Transport, Parameters) noexcept;
-    /// Restart the curve from an audio or MIDI event. Ignored in Sync mode.
-    void trigger() noexcept;
+    // Restarts the curve from an audio or MIDI event.
+    // Returns false when Sync mode, or a running curve without Retrigger, ignores the event.
+    bool trigger() noexcept;
     double nextGain() noexcept;
     /// Position inside the cycle (0..1) of the most recent sample, after shift.
     double phase() const noexcept { return lastPhase; }

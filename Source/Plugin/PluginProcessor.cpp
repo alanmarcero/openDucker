@@ -293,7 +293,7 @@ template<typename Sample> void DuckerProcessor::process(juce::AudioBuffer<Sample
         inputBins[static_cast<size_t>(lastBin)].store(binInput, std::memory_order_relaxed);
         outputBins[static_cast<size_t>(lastBin)].store(binOutput, std::memory_order_relaxed);
     };
-    double gain = 1, blockPeak = 0;
+    double gain = 1, blockPeak = 0, detectorBlockPeak = 0;
     for(int sample = 0; sample < samples; ++sample) {
         double demoL = 0, demoR = 0;
         if(demoImpactSamplesLeft > 0) {
@@ -323,9 +323,10 @@ template<typename Sample> void DuckerProcessor::process(juce::AudioBuffer<Sample
             --demoImpactSamplesLeft;
         }
 
+        bool triggered = false;
         if(trigger == duck::Trigger::Midi) {
             for(; nextEvent != endOfEvents && (*nextEvent).samplePosition <= sample; ++nextEvent)
-                if((*nextEvent).getMessage().isNoteOn()) engine.trigger();
+                if((*nextEvent).getMessage().isNoteOn() && engine.trigger()) triggered = true;
         }
         const bool needDetector = trigger == duck::Trigger::Audio || detectorMonitor;
         double detectorLeft = 0.0, detectorRight = 0.0;
@@ -337,11 +338,16 @@ template<typename Sample> void DuckerProcessor::process(juce::AudioBuffer<Sample
             detectorRight = detectorFilters[1].process(sourceRight);
             if(trigger == duck::Trigger::Audio) {
                 const double level = std::max({std::abs(demoL), std::abs(demoR), std::abs(detectorLeft), std::abs(detectorRight)});
-                if(detector.process(level)) engine.trigger();
+                detectorBlockPeak = std::max(detectorBlockPeak, level);
+                if(detector.process(level) && engine.trigger()) triggered = true;
             }
         }
         const float incoming = sourcePeak(sample);
         gain = engine.nextGain();
+        if(triggered) {
+            triggerCount.fetch_add(1, std::memory_order_relaxed);
+            triggerBeat.store(static_cast<float>(engine.beatPhase()), std::memory_order_relaxed);
+        }
         const int beatBin = juce::jlimit(0, displayBins - 1, static_cast<int>(engine.beatPhase() * displayBins));
         if(beatBin != sourceLastBin) { flushSource(); sourceLastBin = beatBin; sourceHold = incoming; }
         else sourceHold = std::max(sourceHold, incoming);
@@ -403,6 +409,7 @@ template<typename Sample> void DuckerProcessor::process(juce::AudioBuffer<Sample
     }
     flushBin();
     flushSource();
+    detectorPeak.store(std::max(detectorPeak.load(std::memory_order_relaxed), static_cast<float>(detectorBlockPeak)), std::memory_order_relaxed);
     outputPeak.store(static_cast<float>(std::max(blockPeak, outputPeak.load() * std::exp(-samples / (sampleRate * 0.25)))), std::memory_order_relaxed);
     destroyLevel.store(effectsRunning ? static_cast<float>(effects.destroyActivity()) : 0, std::memory_order_relaxed);
     visualPhase.store(static_cast<float>(engine.phase()), std::memory_order_relaxed);

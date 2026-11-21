@@ -66,6 +66,11 @@ public:
     std::atomic<float> outputPeak {0}, destroyLevel {0};
     std::atomic<bool> visualRunning {false};
     std::atomic<int> syncState {0}; // 0: unavailable, 1: stopped, 2: playing
+    // Accepted MIDI and audio triggers, and the cycle position of the last one.
+    std::atomic<int> triggerCount {0};
+    std::atomic<float> triggerBeat {0};
+    // The highest detector level since the editor last read and reset it.
+    std::atomic<float> detectorPeak {0};
     // The session saves these editor settings.
     std::atomic<int> editorWidth {1000};
     std::atomic<bool> effectsShown {true};

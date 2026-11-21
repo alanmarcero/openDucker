@@ -44,6 +44,9 @@ private:
 class CurveDisplay final : public juce::Component, public juce::SettableTooltipClient {
 public:
     explicit CurveDisplay(DuckerProcessor&);
+    // Reads trigger and detector activity once per editor refresh.
+    void tick();
+    bool isFlashing() const noexcept { return flashFrames > 0; }
     void paint(juce::Graphics&) override;
     void mouseMove(const juce::MouseEvent&) override;
     void mouseDown(const juce::MouseEvent&) override;
@@ -59,6 +62,9 @@ private:
     void setLengthFromPointer(float x);
     DuckerProcessor& owner;
     bool dragging = false;
+    int seenTriggers = 0, flashFrames = 0, holdFrames = 0;
+    float detectorLevel = 0, detectorHold = 0;
+    bool clipped = false;
 };
 
 class DuckerEditor final : public juce::AudioProcessorEditor, private juce::Timer {
