@@ -8,6 +8,8 @@ namespace look {
 const juce::Colour background {0xff0d1317}, panel {0xff152026}, panelHover {0xff1e2c33}, display {0xff0a1216},
     mint {0xff48f0c8}, brightMint {0xff80f5dc}, yellow {0xffffbe3b}, darkMint {0xff23483f},
     paper {0xffe6f0f5}, muted {0xffa2b5c0}, ink {0xff0d1317};
+// Bar text height as a share of the bar height, and the text inset at each end.
+constexpr float barTextScale = 0.36f, barPadding = 8.0f;
 }
 
 class DuckLookAndFeel final : public juce::LookAndFeel_V4 {

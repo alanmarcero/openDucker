@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "PluginEditor.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <iostream>
 #include <stdexcept>
@@ -23,6 +24,21 @@ void checkButtonLayout(const juce::Component& parent, int minimum) {
             if (!other->isVisible()) continue;
             if (dynamic_cast<const juce::Button*>(other) || dynamic_cast<const juce::ComboBox*>(other))
                 require(!bounds.intersects(other->getBounds()), "Two action targets overlap");
+        }
+    }
+}
+
+void checkBarText(juce::Component& parent) {
+    for(auto* child : parent.getChildren()) {
+        auto* bar = dynamic_cast<juce::Slider*>(child);
+        if(bar == nullptr || bar->getSliderStyle() != juce::Slider::LinearBar) {
+            checkBarText(*child);
+            continue;
+        }
+        const juce::Font font(juce::FontOptions(static_cast<float>(bar->getHeight()) * look::barTextScale, juce::Font::bold));
+        for(const double value : {bar->getMinimum(), bar->getMaximum(), bar->getDoubleClickReturnValue(), bar->proportionOfLengthToValue(0.5)}) {
+            const float textWidth = juce::GlyphArrangement::getStringWidth(font, bar->getName()) + juce::GlyphArrangement::getStringWidth(font, bar->getTextFromValue(value));
+            require(textWidth + 2 * look::barPadding + 8 <= static_cast<float>(bar->getWidth()), "A bar's name and value overlap");
         }
     }
 }
@@ -595,6 +611,15 @@ void testControls(DuckerProcessor& p, juce::AudioProcessorEditor& editor) {
     require(std::abs(get(p, "shift") - 25) < 0.1, "Shift slider disconnected");
     control<juce::Slider>(editor, "tension").setValue(40, juce::sendNotificationSync);
     require(std::abs(get(p, "tension") - 40) < 0.5, "Tension slider disconnected");
+    auto& tensionBar = control<juce::Slider>(editor, "tension");
+    tensionBar.setValue(0, juce::sendNotificationSync);
+    const auto tensionAtZero = tensionBar.createComponentSnapshot(tensionBar.getLocalBounds());
+    const int fillRow = tensionBar.getHeight() - 4, quarter = tensionBar.getWidth() / 4;
+    require(tensionAtZero.getPixelAt(quarter, fillRow) == tensionAtZero.getPixelAt(tensionBar.getWidth() - quarter, fillRow), "Tension at 0% shows a fill");
+    tensionBar.setValue(-100, juce::sendNotificationSync);
+    require(tensionBar.createComponentSnapshot(tensionBar.getLocalBounds()).getPixelAt(quarter, fillRow) != tensionAtZero.getPixelAt(quarter, fillRow),
+        "Tension does not fill from the centre");
+    tensionBar.setValue(40, juce::sendNotificationSync);
     control<juce::Slider>(editor, "floor").setValue(20, juce::sendNotificationSync);
     require(std::abs(get(p, "floor") - 20) < 0.5, "Floor slider disconnected");
     control<juce::Slider>(editor, "threshold").setValue(-12, juce::sendNotificationSync);
@@ -897,6 +922,7 @@ int main(int argc, char** argv) {
         host.position.setBpm(128);
         host.position.setPpqPosition(0);
         checkButtonLayout(*editor, 40);
+        checkBarText(*editor);
         editor->setSize(800, 643);
         checkButtonLayout(*editor, 32);
         editor->setSize(1000, 804);

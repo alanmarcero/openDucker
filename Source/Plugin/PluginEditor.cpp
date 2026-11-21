@@ -154,11 +154,18 @@ void DuckLookAndFeel::drawLinearSlider(juce::Graphics& g, int x, int y, int widt
     const auto bounds = juce::Rectangle<float>(static_cast<float>(x), static_cast<float>(y), static_cast<float>(width), static_cast<float>(height));
     g.setColour(look::panel);
     g.fillRoundedRectangle(bounds, 4);
+    // A bipolar bar fills from zero, so 0% shows no fill.
+    const bool bipolar = slider.getMinimum() < 0 && slider.getMaximum() > 0;
+    const float left = bounds.getX(), zero = left + bounds.getWidth() * static_cast<float>(slider.valueToProportionOfLength(0));
+    const float origin = bipolar ? zero : left;
     g.setColour(look::mint.withAlpha(0.22f));
-    g.fillRoundedRectangle(bounds.withRight(std::max(bounds.getX() + 4, position)), 4);
+    g.fillRoundedRectangle(juce::Rectangle<float>::leftTopRightBottom(std::min(origin, position), bounds.getY(), std::max(origin, position), bounds.getBottom()), 4);
     g.setColour(look::muted.withAlpha(0.3f));
     g.drawRoundedRectangle(bounds, 4, 1);
-    drawText(g, slider.getName() + "  " + slider.getTextFromValue(slider.getValue()), bounds, bounds.getHeight() * 0.42f, look::paper, juce::Justification::centred, true);
+    const auto text = bounds.reduced(look::barPadding, 0);
+    const float size = bounds.getHeight() * look::barTextScale;
+    drawText(g, slider.getName(), text, size, look::paper, juce::Justification::centredLeft, true);
+    drawText(g, slider.getTextFromValue(slider.getValue()), text, size, look::paper, juce::Justification::centredRight, true);
 }
 
 void DuckLookAndFeel::drawButtonBackground(juce::Graphics& g, juce::Button& button, const juce::Colour&, bool over, bool down) {
@@ -667,10 +674,10 @@ void DuckerEditor::resized() {
 
     previousBank.setBounds(area(354, 312, 40, 40));
     previous.setBounds(area(398, 312, 40, 40));
-    shift.setBounds(area(442, 312, 104, 40));
-    slope.setBounds(area(550, 312, 104, 40));
-    tension.setBounds(area(658, 312, 128, 40));
-    floor.setBounds(area(790, 312, 106, 40));
+    shift.setBounds(area(442, 312, 100, 40));
+    slope.setBounds(area(546, 312, 106, 40));
+    tension.setBounds(area(656, 312, 133, 40));
+    floor.setBounds(area(793, 312, 103, 40));
     next.setBounds(area(900, 312, 40, 40));
     nextBank.setBounds(area(944, 312, 40, 40));
 
