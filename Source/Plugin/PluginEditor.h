@@ -74,6 +74,7 @@ private:
     void configureBar(juce::Slider&, const char* id, const juce::String& name, const juce::String& unit, const char* tip);
     DuckerProcessor& owner;
     DuckLookAndFeel theme;
+    juce::Component content;
     CurveDisplay display;
     EffectsPanel effectsPanel;
     suite::SuiteBar suiteBar;

@@ -7,6 +7,7 @@ constexpr float pi = juce::MathConstants<float>::pi;
 constexpr int contentShift = 44;
 constexpr int collapsedHeight = 552 + contentShift;
 constexpr int expandedHeight = 760 + contentShift;
+constexpr int minimumWidth = 700, maximumWidth = 2000;
 
 void drawText(juce::Graphics& g, const juce::String& value, juce::Rectangle<float> bounds, float size, juce::Colour colour,
     juce::Justification alignment = juce::Justification::centred, bool bold = true) {
@@ -434,11 +435,13 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
     faceplate = juce::ImageCache::getFromMemory(BinaryData::analogcyberfaceplate_png, BinaryData::analogcyberfaceplate_pngSize);
 
     setWantsKeyboardFocus(true);
-    addAndMakeVisible(suiteBar);
-    addAndMakeVisible(display);
-    addAndMakeVisible(effectsPanel);
-    addAndMakeVisible(effectsToggle);
-    addAndMakeVisible(pushItButton);
+    content.setComponentID("content");
+    addAndMakeVisible(content);
+    content.addAndMakeVisible(suiteBar);
+    content.addAndMakeVisible(display);
+    content.addAndMakeVisible(effectsPanel);
+    content.addAndMakeVisible(effectsToggle);
+    content.addAndMakeVisible(pushItButton);
     pushItButton.setComponentID("pushIt");
     pushItButton.setTooltip("Play a short impact through the ducking curve and effects.");
     pushItButton.onClick = [this] { owner.triggerDemoImpact(); };
@@ -449,21 +452,22 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
     effectsToggle.setTooltip("Show or hide the effects controls. Audio processing stays active.");
     effectsToggle.onClick = [this] {
         effectsExpanded = !effectsExpanded;
+        owner.effectsShown.store(effectsExpanded);
         effectsPanel.setVisible(effectsExpanded);
         effectsToggle.setButtonText(effectsExpanded ? "Hide FX" : "Show FX");
         const int targetHeight = effectsExpanded ? expandedHeight : collapsedHeight;
         const double ratio = 1000.0 / static_cast<double>(targetHeight);
-        const int currentWidth = getWidth();
+        const int width = juce::jlimit(minimumWidth, maximumWidth, owner.editorWidth.load());
         getConstrainer()->setFixedAspectRatio(ratio);
-        setResizeLimits(800, juce::roundToInt(800.0 / ratio), 2000, targetHeight * 2);
-        setSize(currentWidth, juce::roundToInt(static_cast<double>(currentWidth) / ratio));
+        setResizeLimits(minimumWidth, juce::roundToInt(minimumWidth / ratio), maximumWidth, juce::roundToInt(maximumWidth / ratio));
+        setSize(width, juce::roundToInt(static_cast<double>(width) / ratio));
     };
 
     mix.setComponentID("mix"); mix.setName("Mix");
     mix.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag); mix.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
     mix.setRotaryParameters(pi * 1.25f, pi * 2.75f, true); mix.setDoubleClickReturnValue(true, 100);
     mix.setTooltip("Blend between the original signal and the ducked signal. Double-click to reset to 100%.");
-    addAndMakeVisible(mix);
+    content.addAndMakeVisible(mix);
     mixAttachment = std::make_unique<SliderAttachment>(p.parameters, "mix", mix);
     mix.textFromValueFunction = [](double value) { return juce::String(juce::roundToInt(value)) + "%"; };
 
@@ -480,7 +484,7 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
     bandSlope.setName("Band slope");
     bandSlope.addItemList({"12 dB/oct", "24 dB/oct", "48 dB/oct"}, 1);
     bandSlope.setTooltip("Crossover filter steepness for Low Band ducking mode.");
-    addAndMakeVisible(bandSlope);
+    content.addAndMakeVisible(bandSlope);
     bandSlopeAttachment = std::make_unique<ComboBoxAttachment>(p.parameters, "bandSlope", bandSlope);
     configureBar(detectorHpf, "detectorHpf", "Detector HPF", "Hz", "High-pass filter on the audio-trigger detector. 0 Hz bypasses it.");
     configureBar(detectorLpf, "detectorLpf", "Detector LPF", "Hz", "Low-pass filter on the audio-trigger detector. 0 Hz bypasses it.");
@@ -494,12 +498,12 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
         label->setFont(juce::FontOptions(9.0f, juce::Font::bold));
         label->setJustificationType(juce::Justification::centredLeft);
         label->setColour(juce::Label::textColourId, look::muted);
-        addAndMakeVisible(*label);
+        content.addAndMakeVisible(*label);
     }
     detectorMonitorButton.setComponentID("detectorMonitor");
     detectorMonitorButton.setClickingTogglesState(true);
     detectorMonitorButton.setTooltip("Listen to the filtered detector input in place of the processed output.");
-    addAndMakeVisible(detectorMonitorButton);
+    content.addAndMakeVisible(detectorMonitorButton);
     detectorMonitorAttachment = std::make_unique<ButtonAttachment>(p.parameters, "detectorMonitor", detectorMonitorButton);
 
     const juce::StringArray rateNames {"1/8", "1/4", "1/2", "1/1"};
@@ -508,7 +512,7 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
         rateButtons[i].setComponentID("rate" + juce::String(static_cast<int>(i)));
         rateButtons[i].setTooltip("Length of one ducking cycle, synced to the host tempo.");
         rateButtons[i].onClick = [this, i] { setChoice("rate", static_cast<int>(i)); };
-        addAndMakeVisible(rateButtons[i]);
+        content.addAndMakeVisible(rateButtons[i]);
     }
     const juce::StringArray triggerNames {"Sync", "MIDI", "Audio"};
     const juce::StringArray triggerTips {"Loop the curve with the host transport.", "Restart the curve on every incoming MIDI note.",
@@ -518,11 +522,11 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
         triggerButtons[i].setComponentID("trigger" + juce::String(static_cast<int>(i)));
         triggerButtons[i].setTooltip(triggerTips[static_cast<int>(i)]);
         triggerButtons[i].onClick = [this, i] { setChoice("trigger", static_cast<int>(i)); };
-        addAndMakeVisible(triggerButtons[i]);
+        content.addAndMakeVisible(triggerButtons[i]);
     }
     bandButton.setButtonText("Low band"); bandButton.setComponentID("band"); bandButton.setClickingTogglesState(true);
     bandButton.setTooltip("Duck only the low band below the band frequency.");
-    addAndMakeVisible(bandButton);
+    content.addAndMakeVisible(bandButton);
 
     retrigger.setComponentID("retrigger"); retrigger.setClickingTogglesState(true);
     retrigger.setTooltip("Retrigger: when on, incoming triggers restart an active curve immediately.");
@@ -541,7 +545,7 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
     previousBank.setTitle("Previous row of curves");
     nextBank.setTitle("Next row of curves");
     for (auto* button : {&retrigger, &solo, &menu, &previous, &next, &previousBank, &nextBank})
-        addAndMakeVisible(*button);
+        content.addAndMakeVisible(*button);
 
     retriggerAttachment = std::make_unique<ButtonAttachment>(p.parameters, "retrigger", retrigger);
     soloAttachment = std::make_unique<ButtonAttachment>(p.parameters, "bandSolo", solo);
@@ -552,7 +556,7 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
         button->setComponentID("curve" + juce::String(i));
         button->setTooltip(juce::String(duck::curveNames[static_cast<size_t>(i)]) + " curve.");
         button->onClick = [this, i] { setChoice("curve", i); };
-        addAndMakeVisible(*button);
+        content.addAndMakeVisible(*button);
         curveButtons.push_back(std::move(button));
     }
     const auto selectInGroup = [](auto& buttons, float value) {
@@ -569,9 +573,9 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
         }, nullptr);
     rateAttachment->sendInitialUpdate(); triggerAttachment->sendInitialUpdate(); curveAttachment->sendInitialUpdate();
     setResizable(true, true);
-    setResizeLimits(800, expandedHeight * 4 / 5, 2000, expandedHeight * 2);
-    getConstrainer()->setFixedAspectRatio(1000.0 / static_cast<double>(expandedHeight));
-    setSize(1000, expandedHeight);
+    // The toggle applies the saved effects visibility and editor width.
+    effectsExpanded = !owner.effectsShown.load();
+    effectsToggle.onClick();
     startTimerHz(30);
 }
 
@@ -580,7 +584,7 @@ DuckerEditor::~DuckerEditor() { stopTimer(); setLookAndFeel(nullptr); }
 void DuckerEditor::configureBar(juce::Slider& slider, const char* id, const juce::String& name, const juce::String& unit, const char* tip) {
     slider.setComponentID(id); slider.setName(name); slider.setTooltip(tip);
     slider.setSliderStyle(juce::Slider::LinearBar); slider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
-    addAndMakeVisible(slider);
+    content.addAndMakeVisible(slider);
     auto attachment = std::make_unique<SliderAttachment>(owner.parameters, id, slider);
     if(juce::String(id) == "bandFrequency") bandAttachment = std::move(attachment);
     else if(juce::String(id) == "shift") shiftAttachment = std::move(attachment);
@@ -629,19 +633,18 @@ void DuckerEditor::showMenu() {
 void DuckerEditor::timerCallback() {
     display.repaint();
     suiteBar.refresh();
-    if(effectsPanel.isVisible()) {
-        const float s = static_cast<float>(getWidth()) / 1000.0f;
-        effectsPanel.repaint(juce::Rectangle<float>(660.0f * s, 4.0f * s, 306.0f * s, 74.0f * s).toNearestInt());
-    }
+    if(effectsPanel.isVisible()) effectsPanel.repaint(660, 4, 306, 74);
     repaint(0, 0, getWidth() * 35 / 100, juce::roundToInt((280.0f + contentShift) * static_cast<float>(getWidth()) / 1000.0f));
 }
 
 void DuckerEditor::resized() {
-    const float s = static_cast<float>(getWidth()) / 1000.0f;
-    const auto area = [s](float x, float y, float w, float h) {
-        return juce::Rectangle<float>(x * s, (y + contentShift) * s, w * s, h * s).toNearestInt();
+    owner.editorWidth.store(getWidth());
+    content.setBounds(0, 0, 1000, expandedHeight);
+    content.setTransform(juce::AffineTransform::scale(static_cast<float>(getWidth()) / 1000.0f));
+    const auto area = [](float x, float y, float w, float h) {
+        return juce::Rectangle<float>(x, y + contentShift, w, h).toNearestInt();
     };
-    suiteBar.setBounds(juce::Rectangle<float>(12 * s, 4 * s, 976 * s, 40 * s).toNearestInt());
+    suiteBar.setBounds(12, 4, 976, 40);
 
     // Left column: DJ Duck is at y=56..240, Mix knob at y=244..424, Band & FX toggle section at y=430..538
     mix.setBounds(area(70, 244, 204, 180));

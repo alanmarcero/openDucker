@@ -666,6 +666,25 @@ void testBeatLockedWaveform() {
     direct.setPlayHead(nullptr);
 }
 
+void testEditorRecall() {
+    DuckerProcessor first;
+    {
+        std::unique_ptr<juce::AudioProcessorEditor> editor(first.createEditor());
+        editor->setSize(1300, 1045);
+        control<juce::TextButton>(*editor, "effectsToggle").onClick();
+        require(editor->getWidth() == 1300 && editor->getHeight() == 775, "Hiding FX does not keep the editor width");
+    }
+    juce::MemoryBlock state;
+    first.getStateInformation(state);
+    DuckerProcessor second;
+    second.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+    std::unique_ptr<juce::AudioProcessorEditor> editor(second.createEditor());
+    require(editor->getWidth() == 1300 && control<juce::TextButton>(*editor, "effectsToggle").getButtonText() == "Show FX",
+        "The editor does not reopen at its saved width and FX visibility");
+    const auto scale = control<juce::Component>(*editor, "content").getTransform();
+    require(std::abs(scale.mat00 - 1.3f) < 1e-4f && std::abs(scale.mat11 - 1.3f) < 1e-4f, "The editor content does not scale uniformly");
+}
+
 void testSuite(DuckerProcessor& processor, juce::AudioProcessorEditor& editor) {
     require(processor.getNumPrograms() == 16, "Factory bank should contain 16 patches");
     juce::StringArray names;
@@ -815,6 +834,7 @@ int main(int argc, char** argv) {
         testEffectsControls(p, *editor);
         testEqDetents(p, *editor);
         testSuite(p, *editor);
+        testEditorRecall();
         {
             // README and OpenVST Manager show this capture: the editor at the size it opens,
             // on the first factory patch, not the Sync demo configured below.

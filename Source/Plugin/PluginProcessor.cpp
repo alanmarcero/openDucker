@@ -482,6 +482,8 @@ void DuckerProcessor::getStateInformation(juce::MemoryBlock& data) {
     auto state = parameters.copyState();
     state.setProperty("program", currentProgram, nullptr);
     state.setProperty("presetKey", presetLibrary.activeKey(), nullptr);
+    state.setProperty("editorWidth", editorWidth.load(), nullptr);
+    state.setProperty("effectsShown", effectsShown.load(), nullptr);
     state.addChild(abCompare.toTree(), -1, nullptr);
     if(auto xml = state.createXml()) copyXmlToBinary(*xml, data);
 }
@@ -493,8 +495,12 @@ void DuckerProcessor::setStateInformation(const void* data, int size) {
         const bool hasProgram = state.hasProperty("program");
         const int program = hasProgram ? static_cast<int>(state.getProperty("program")) : currentProgram;
         const auto presetKey = state.getProperty("presetKey").toString();
+        editorWidth.store(static_cast<int>(state.getProperty("editorWidth", 1000)));
+        effectsShown.store(static_cast<bool>(state.getProperty("effectsShown", true)));
         state.removeProperty("program", nullptr);
         state.removeProperty("presetKey", nullptr);
+        state.removeProperty("editorWidth", nullptr);
+        state.removeProperty("effectsShown", nullptr);
         for(const auto* id : fxIds) if(!state.getChildWithProperty("id", id).isValid()) {
             auto* parameter = parameters.getParameter(id);
             juce::ValueTree child {"PARAM"}; child.setProperty("id", id, nullptr);

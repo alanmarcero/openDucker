@@ -66,6 +66,9 @@ public:
     std::atomic<float> outputPeak {0}, destroyLevel {0};
     std::atomic<bool> visualRunning {false};
     std::atomic<int> syncState {0}; // 0: unavailable, 1: stopped, 2: playing
+    // The session saves these editor settings.
+    std::atomic<int> editorWidth {1000};
+    std::atomic<bool> effectsShown {true};
     void triggerDemoImpact() noexcept { triggerDemo.store(true); }
 
 private:
