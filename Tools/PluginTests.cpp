@@ -43,6 +43,17 @@ void checkBarText(juce::Component& parent) {
     }
 }
 
+void checkControlTitles(const juce::Component& parent) {
+    for(const auto* child : parent.getChildren()) {
+        if(dynamic_cast<const juce::Slider*>(child) != nullptr
+           || dynamic_cast<const juce::ComboBox*>(child) != nullptr
+           || dynamic_cast<const juce::Button*>(child) != nullptr) {
+            require(child->getTitle().isNotEmpty(), "A control is missing its accessible title");
+        }
+        checkControlTitles(*child);
+    }
+}
+
 struct Host : juce::AudioPlayHead {
     PositionInfo position;
     juce::Optional<PositionInfo> getPosition() const override { return position; }
@@ -861,6 +872,43 @@ void testPresetNavigation(DuckerProcessor& processor, juce::AudioProcessorEditor
     suiteBar.refresh();
 }
 
+void testPresetConfirm(DuckerProcessor& processor, juce::AudioProcessorEditor& editor) {
+    const auto directory = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("openDucker-confirm-test");
+    directory.deleteRecursively();
+    processor.presets().setDirectory(directory);
+    auto& suiteBar = control<suite::SuiteBar>(editor, "suiteBar");
+    auto browser = suiteBar.createBrowser();
+    checkControlTitles(*browser);
+
+    auto& nameEditor = control<juce::TextEditor>(*browser, "presetName");
+    auto& saveButton = control<juce::TextButton>(*browser, "presetSave");
+    auto& deleteButton = control<juce::TextButton>(*browser, "presetDelete");
+
+    nameEditor.setText("My Test", juce::dontSendNotification);
+    saveButton.onClick();
+    require(saveButton.getButtonText() == "Save" && processor.presets().find("user:My Test").has_value(),
+        "Saving a new preset should not ask to replace");
+
+    saveButton.onClick();
+    require(saveButton.getButtonText() == "Replace?", "Saving over an existing user preset must ask Replace?");
+    saveButton.onClick();
+    require(saveButton.getButtonText() == "Save", "Second click must commit the replace and reset the label");
+
+    auto& userRow = control<juce::TextButton>(*browser, "userPreset");
+    userRow.onClick();
+    require(deleteButton.isEnabled(), "Delete should be enabled for a selected user preset");
+    deleteButton.onClick();
+    require(deleteButton.getButtonText() == "Delete?" && processor.presets().find("user:My Test").has_value(),
+        "Deleting a user preset must ask Delete? before removing it");
+    deleteButton.onClick();
+    require(deleteButton.getButtonText() == "Delete" && !processor.presets().find("user:My Test").has_value(),
+        "Second click must delete the user preset and reset the label");
+
+    directory.deleteRecursively();
+    processor.setCurrentProgram(0);
+    suiteBar.refresh();
+}
+
 void testSlotUndo() {
     DuckerProcessor p;
     auto* mix = p.parameters.getParameter("mix");
@@ -1049,6 +1097,7 @@ int main(int argc, char** argv) {
         host.position.setPpqPosition(0);
         checkButtonLayout(*editor, 40);
         checkBarText(*editor);
+        checkControlTitles(*editor);
         editor->setSize(800, 643);
         checkButtonLayout(*editor, 32);
         editor->setSize(1000, 804);
@@ -1057,6 +1106,7 @@ int main(int argc, char** argv) {
         testEqDetents(p, *editor);
         testSuite(p, *editor);
         testPresetNavigation(p, *editor);
+        testPresetConfirm(p, *editor);
         testSlotUndo();
         testEditorRecall();
         testTriggerFeedback();

@@ -28,7 +28,7 @@ EffectsPanel::EffectsPanel(DuckerProcessor& p) : owner(p) {
     for(size_t i = 0; i < knobs.size(); ++i) {
         auto& knob = knobs[i]; const auto& spec = knobSpecs[i];
         knob.zeroDetent = i == 2 || i == 3 || i == 6 || i == 7;
-        knob.setComponentID(spec.id); knob.setName(spec.name); knob.setTooltip(spec.tip);
+        knob.setComponentID(spec.id); knob.setName(spec.name); knob.setTitle(spec.name); knob.setTooltip(spec.tip);
         knob.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag); knob.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
         knob.setRotaryParameters(juce::MathConstants<float>::pi * 1.25f, juce::MathConstants<float>::pi * 2.75f, true);
         knob.setWantsKeyboardFocus(true); addAndMakeVisible(knob);
@@ -56,7 +56,8 @@ EffectsPanel::EffectsPanel(DuckerProcessor& p) : owner(p) {
     };
     for(size_t i = 0; i < choices.size(); ++i) {
         auto& choice = choices[i];
-        choice.setComponentID(choiceIds[i]); choice.setName(p.parameters.getParameter(choiceIds[i])->getName(64)); choice.setTooltip(choiceTips[i]);
+        const auto choiceName = p.parameters.getParameter(choiceIds[i])->getName(64);
+        choice.setComponentID(choiceIds[i]); choice.setName(choiceName); choice.setTitle(choiceName); choice.setTooltip(choiceTips[i]);
         choice.addItemList(choiceItems[i], 1); addAndMakeVisible(choice);
         choiceAttachments[i] = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(p.parameters, choiceIds[i], choice);
     }
@@ -79,6 +80,7 @@ void EffectsPanel::refresh() {
     switches[0].setButtonText(switches[0].getToggleState() ? "FX On" : "FX Off");
     switches[1].setButtonText(switches[1].getToggleState() ? "Delay On" : "Delay Off");
     switches[2].setButtonText(switches[2].getToggleState() ? "Reverb On" : "Reverb Off");
+    for(auto& button : switches) button.setTitle(button.getButtonText());
     // Controls that have no effect draw dimmed and stay editable. Output always applies.
     const bool fxOn = switches[0].getToggleState();
     const std::array<bool, 6> choiceActive {fxOn, fxOn && choices[0].getSelectedId() != 1, fxOn && switches[1].getToggleState(),

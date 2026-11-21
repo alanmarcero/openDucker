@@ -18,6 +18,7 @@ public:
     void paint(juce::Graphics&) override;
     void resized() override;
     void refresh();
+    std::unique_ptr<juce::Component> createBrowser();
 private:
     void showBrowser();
     SuiteHost& host;

@@ -519,18 +519,22 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
     content.addAndMakeVisible(effectsToggle);
     content.addAndMakeVisible(pushItButton);
     pushItButton.setComponentID("pushIt");
+    pushItButton.setTitle("Audition");
     pushItButton.setTooltip("Play a short impact through the ducking curve and effects.");
     pushItButton.onClick = [this] { owner.triggerDemoImpact(); };
     pushItButton.setColour(juce::TextButton::buttonColourId, look::panel.brighter(0.12f));
     pushItButton.setColour(juce::TextButton::textColourOffId, look::brightMint);
     effectsToggle.setComponentID("effectsToggle");
     effectsToggle.setButtonText("Hide FX");
+    effectsToggle.setTitle("Hide FX");
     effectsToggle.setTooltip("Show or hide the effects controls. Audio processing stays active.");
     effectsToggle.onClick = [this] {
         effectsExpanded = !effectsExpanded;
         owner.effectsShown.store(effectsExpanded);
         effectsPanel.setVisible(effectsExpanded);
-        effectsToggle.setButtonText(effectsExpanded ? "Hide FX" : "Show FX");
+        const auto label = effectsExpanded ? "Hide FX" : "Show FX";
+        effectsToggle.setButtonText(label);
+        effectsToggle.setTitle(label);
         const int targetHeight = effectsExpanded ? expandedHeight : collapsedHeight;
         const double ratio = 1000.0 / static_cast<double>(targetHeight);
         const int width = juce::jlimit(minimumWidth, maximumWidth, owner.editorWidth.load());
@@ -539,7 +543,7 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
         setSize(width, juce::roundToInt(static_cast<double>(width) / ratio));
     };
 
-    mix.setComponentID("mix"); mix.setName("Mix");
+    mix.setComponentID("mix"); mix.setName("Mix"); mix.setTitle("Mix");
     mix.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag); mix.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
     mix.setRotaryParameters(pi * 1.25f, pi * 2.75f, true); mix.setDoubleClickReturnValue(true, 100);
     mix.setTooltip("Blend between the original signal and the ducked signal. Double-click to reset to 100%.");
@@ -560,6 +564,7 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
         "The plugin reports this delay to the host as latency. Off adds no latency.");
     bandSlope.setComponentID("bandSlope");
     bandSlope.setName("Band slope");
+    bandSlope.setTitle("Band slope");
     bandSlope.addItemList({"12 dB/oct", "24 dB/oct", "48 dB/oct"}, 1);
     bandSlope.setTooltip("Crossover filter steepness for Low band ducking. Turn on Low band to use it.");
     content.addAndMakeVisible(bandSlope);
@@ -586,6 +591,7 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
     detectorHpf.setDoubleClickReturnValue(true, 0);
     detectorLpf.setDoubleClickReturnValue(true, 0);
     detectorMonitorButton.setComponentID("detectorMonitor");
+    detectorMonitorButton.setTitle("Listen");
     detectorMonitorButton.setClickingTogglesState(true);
     detectorMonitorButton.setTooltip("Listen to the filtered detector input in place of the processed output.");
     detectorMonitorButton.onStateChange = [this] { refreshActivity(); };
@@ -595,6 +601,7 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
     const juce::StringArray rateNames {"1/8", "1/4", "1/2", "1/1"};
     for(size_t i = 0; i < rateButtons.size(); ++i) {
         rateButtons[i].setButtonText(rateNames[static_cast<int>(i)]);
+        rateButtons[i].setTitle(rateNames[static_cast<int>(i)]);
         rateButtons[i].setComponentID("rate" + juce::String(static_cast<int>(i)));
         rateButtons[i].setTooltip("Length of one ducking cycle, synced to the host tempo.");
         rateButtons[i].onClick = [this, i] { setChoice("rate", static_cast<int>(i)); };
@@ -605,12 +612,13 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
         "Restart the curve when the sidechain (or main input) crosses the threshold."};
     for(size_t i = 0; i < triggerButtons.size(); ++i) {
         triggerButtons[i].setButtonText(triggerNames[static_cast<int>(i)]);
+        triggerButtons[i].setTitle(triggerNames[static_cast<int>(i)]);
         triggerButtons[i].setComponentID("trigger" + juce::String(static_cast<int>(i)));
         triggerButtons[i].setTooltip(triggerTips[static_cast<int>(i)]);
         triggerButtons[i].onClick = [this, i] { setChoice("trigger", static_cast<int>(i)); };
         content.addAndMakeVisible(triggerButtons[i]);
     }
-    bandButton.setButtonText("Low band"); bandButton.setComponentID("band"); bandButton.setClickingTogglesState(true);
+    bandButton.setButtonText("Low band"); bandButton.setTitle("Low band"); bandButton.setComponentID("band"); bandButton.setClickingTogglesState(true);
     bandButton.setTooltip("Duck only the low band below the band frequency.");
     bandButton.onStateChange = [this] { refreshActivity(); };
     content.addAndMakeVisible(bandButton);
@@ -641,6 +649,7 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
     for(int i = 0; i < duck::curveCount; ++i) {
         auto button = std::make_unique<CurveButton>(i);
         button->setComponentID("curve" + juce::String(i));
+        button->setTitle(duck::curveNames[static_cast<size_t>(i)]);
         button->setTooltip(juce::String(duck::curveNames[static_cast<size_t>(i)]) + " curve.");
         button->onClick = [this, i] { setChoice("curve", i); };
         content.addAndMakeVisible(*button);
@@ -669,7 +678,7 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
 DuckerEditor::~DuckerEditor() { stopTimer(); setLookAndFeel(nullptr); }
 
 void DuckerEditor::configureBar(juce::Slider& slider, const char* id, const juce::String& name, const char* tip) {
-    slider.setComponentID(id); slider.setName(name); slider.setTooltip(tip);
+    slider.setComponentID(id); slider.setName(name); slider.setTitle(name); slider.setTooltip(tip);
     slider.setSliderStyle(juce::Slider::LinearBar); slider.setSliderSnapsToMousePosition(false);
     content.addAndMakeVisible(slider);
     // A click without a drag opens this text box for typing.

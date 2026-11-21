@@ -5,7 +5,7 @@
 
 namespace suite {
 namespace {
-class PresetBrowser final : public juce::Component {
+class PresetBrowser final : public juce::Component, private juce::Timer {
 public:
     PresetBrowser(SuiteHost& hostIn, Palette paletteIn, std::function<void()> changedIn)
         : host(hostIn), palette(paletteIn), changed(std::move(changedIn)) {
@@ -17,14 +17,15 @@ public:
         };
         search.setComponentID("presetSearch");
         search.setTextToShowWhenEmpty("Search presets", palette.muted);
-        search.onTextChange = [this] { rebuild(); };
+        search.onTextChange = [this] { clearConfirm(); rebuild(); };
         style(search);
         name.setComponentID("presetName");
         name.setTextToShowWhenEmpty("Preset name", palette.muted);
+        name.onTextChange = [this] { if(confirmingAction == ConfirmAction::Replace) clearConfirm(); };
         style(name);
-        save.setButtonText("Save"); save.setComponentID("presetSave");
-        renameButton.setButtonText("Rename"); renameButton.setComponentID("presetRename");
-        removeButton.setButtonText("Delete"); removeButton.setComponentID("presetDelete");
+        save.setButtonText("Save"); save.setTitle("Save"); save.setComponentID("presetSave");
+        renameButton.setButtonText("Rename"); renameButton.setTitle("Rename"); renameButton.setComponentID("presetRename");
+        removeButton.setButtonText("Delete"); removeButton.setTitle("Delete"); removeButton.setComponentID("presetDelete");
         save.onClick = [this] { saveCurrent(); };
         renameButton.onClick = [this] { renameCurrent(); };
         removeButton.onClick = [this] { deleteCurrent(); };
@@ -36,7 +37,7 @@ public:
         error.setJustificationType(juce::Justification::centredLeft);
         rebuild();
     }
-    ~PresetBrowser() override { setLookAndFeel(nullptr); }
+    ~PresetBrowser() override { stopTimer(); setLookAndFeel(nullptr); }
 
     void paint(juce::Graphics& g) override { g.fillAll(palette.background); }
 
@@ -64,9 +65,11 @@ public:
         for(const auto& entry : entries) {
             auto row = std::make_unique<juce::TextButton>((entry.favorite ? "* " : "") + entry.name + (entry.factory ? "" : "  ·"));
             row->setComponentID(entry.factory ? "factoryPreset" : "userPreset");
+            row->setTitle(entry.name);
             row->setTooltip(entry.factory ? "Factory preset" : "User preset");
             row->setToggleState(entry.key == selected, juce::dontSendNotification);
             row->onClick = [this, key = entry.key, factory = entry.factory, presetName = entry.name] {
+                clearConfirm();
                 selected = key;
                 selectedFactory = factory;
                 name.setText(factory ? juce::String() : presetName, juce::dontSendNotification);
@@ -96,7 +99,33 @@ private:
         list.setSize(width, std::max(y, 30));
     }
 
+    enum class ConfirmAction { None, Replace, Delete };
+
+    void timerCallback() override { clearConfirm(); }
+
+    void clearConfirm() {
+        stopTimer();
+        confirmingAction = ConfirmAction::None;
+        pendingReplaceName.clear();
+        save.setButtonText("Save");
+        save.setTitle("Save");
+        removeButton.setButtonText("Delete");
+        removeButton.setTitle("Delete");
+    }
+
     void saveCurrent() {
+        const auto sanitized = PresetLibrary::sanitize(name.getText());
+        if(sanitized.isNotEmpty() && host.presets().find("user:" + sanitized).has_value()
+           && !(confirmingAction == ConfirmAction::Replace && pendingReplaceName == sanitized)) {
+            clearConfirm();
+            confirmingAction = ConfirmAction::Replace;
+            pendingReplaceName = sanitized;
+            save.setButtonText("Replace?");
+            save.setTitle("Replace?");
+            startTimer(3000);
+            return;
+        }
+        clearConfirm();
         juce::String message;
         if(!host.savePreset(name.getText(), message)) error.setText(message, juce::dontSendNotification);
         else {
@@ -109,6 +138,7 @@ private:
     }
 
     void renameCurrent() {
+        clearConfirm();
         juce::String message;
         if(!host.renamePreset(selected, name.getText(), message)) error.setText(message, juce::dontSendNotification);
         else {
@@ -120,6 +150,16 @@ private:
     }
 
     void deleteCurrent() {
+        if(selected.isEmpty() || selectedFactory) return;
+        if(confirmingAction != ConfirmAction::Delete) {
+            clearConfirm();
+            confirmingAction = ConfirmAction::Delete;
+            removeButton.setButtonText("Delete?");
+            removeButton.setTitle("Delete?");
+            startTimer(3000);
+            return;
+        }
+        clearConfirm();
         juce::String message;
         if(!host.deletePreset(selected, message)) error.setText(message, juce::dontSendNotification);
         else {
@@ -142,21 +182,23 @@ private:
     std::vector<std::unique_ptr<juce::TextButton>> rows;
     juce::String selected;
     bool selectedFactory = true;
+    ConfirmAction confirmingAction = ConfirmAction::None;
+    juce::String pendingReplaceName;
 };
 }
 
 SuiteBar::SuiteBar(SuiteHost& hostIn, Palette paletteIn) : host(hostIn), palette(paletteIn) {
     setComponentID("suiteBar");
-    undoButton.setComponentID("undo"); undoButton.setTooltip("Undo the last parameter edit.");
-    redoButton.setComponentID("redo"); redoButton.setTooltip("Redo the last undone edit.");
-    aButton.setComponentID("slotA"); aButton.setTooltip("Recall slot A.");
-    bButton.setComponentID("slotB"); bButton.setTooltip("Recall slot B.");
-    aToBButton.setComponentID("copyAtoB"); aToBButton.setTooltip("Copy slot A into slot B.");
-    bToAButton.setComponentID("copyBtoA"); bToAButton.setTooltip("Copy slot B into slot A.");
-    presetButton.setComponentID("presets"); presetButton.setTooltip("Browse factory and user presets.");
-    favoriteButton.setComponentID("favorite"); favoriteButton.setTooltip("Mark the current preset as a favorite.");
-    previousPresetButton.setComponentID("presetPrevious"); previousPresetButton.setTooltip("Previous preset");
-    nextPresetButton.setComponentID("presetNext"); nextPresetButton.setTooltip("Next preset");
+    undoButton.setComponentID("undo"); undoButton.setTitle("Undo"); undoButton.setTooltip("Undo the last parameter edit.");
+    redoButton.setComponentID("redo"); redoButton.setTitle("Redo"); redoButton.setTooltip("Redo the last undone edit.");
+    aButton.setComponentID("slotA"); aButton.setTitle("Slot A"); aButton.setTooltip("Recall slot A.");
+    bButton.setComponentID("slotB"); bButton.setTitle("Slot B"); bButton.setTooltip("Recall slot B.");
+    aToBButton.setComponentID("copyAtoB"); aToBButton.setTitle("Copy A to B"); aToBButton.setTooltip("Copy slot A into slot B.");
+    bToAButton.setComponentID("copyBtoA"); bToAButton.setTitle("Copy B to A"); bToAButton.setTooltip("Copy slot B into slot A.");
+    presetButton.setComponentID("presets"); presetButton.setTitle("Presets"); presetButton.setTooltip("Browse factory and user presets.");
+    favoriteButton.setComponentID("favorite"); favoriteButton.setTitle("Favorite"); favoriteButton.setTooltip("Mark the current preset as a favorite.");
+    previousPresetButton.setComponentID("presetPrevious"); previousPresetButton.setTitle("Previous preset"); previousPresetButton.setTooltip("Previous preset");
+    nextPresetButton.setComponentID("presetNext"); nextPresetButton.setTitle("Next preset"); nextPresetButton.setTooltip("Next preset");
     // Steps through the browser's list order and wraps at the ends.
     for(auto* button : {&previousPresetButton, &nextPresetButton}) {
         button->onClick = [this, step = button == &nextPresetButton ? 1 : -1] {
@@ -225,14 +267,19 @@ void SuiteBar::refresh() {
     bButton.setToggleState(!host.slotIsA(), juce::dontSendNotification);
     const auto key = host.presets().activeKey();
     presetButton.setButtonText(host.presets().activeName() + (host.presets().isEdited() ? " *" : ""));
+    presetButton.setTitle(presetButton.getButtonText());
     favoriteButton.setToggleState(key.isNotEmpty() && host.presets().isFavorite(key), juce::dontSendNotification);
     favoriteButton.setEnabled(key.isNotEmpty());
 }
 
-void SuiteBar::showBrowser() {
+std::unique_ptr<juce::Component> SuiteBar::createBrowser() {
     auto browser = std::make_unique<PresetBrowser>(host, palette, [this] { refresh(); });
     browser->setLookAndFeel(&getLookAndFeel());
     browser->setSize(320, 420);
-    juce::CallOutBox::launchAsynchronously(std::move(browser), presetButton.getScreenBounds(), nullptr);
+    return browser;
+}
+
+void SuiteBar::showBrowser() {
+    juce::CallOutBox::launchAsynchronously(createBrowser(), presetButton.getScreenBounds(), nullptr);
 }
 }
