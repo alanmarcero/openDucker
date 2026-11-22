@@ -14,6 +14,20 @@ constexpr float barTextScale = 0.36f, barPadding = 8.0f;
 constexpr float inactiveAlpha = 0.4f;
 }
 
+inline void bindParamLock(juce::Component& control, const char* paramId) {
+    control.getProperties().set("paramLockId", juce::String(paramId));
+}
+
+class ParamLockOverlay final : public juce::Component {
+public:
+    explicit ParamLockOverlay(DuckerProcessor& p) : owner(p) { setInterceptsMouseClicks(false, false); }
+    void paint(juce::Graphics&) override;
+    void mouseDown(const juce::MouseEvent&) override;
+private:
+    void paintLocksIn(juce::Graphics&, juce::Component&);
+    DuckerProcessor& owner;
+};
+
 class DuckLookAndFeel final : public juce::LookAndFeel_V4 {
 public:
     DuckLookAndFeel();
@@ -104,6 +118,7 @@ private:
         previous {GlyphButton::Glyph::Previous}, next {GlyphButton::Glyph::Next},
         previousBank {GlyphButton::Glyph::PreviousBank}, nextBank {GlyphButton::Glyph::NextBank};
     std::vector<std::unique_ptr<CurveButton>> curveButtons;
+    ParamLockOverlay lockOverlay;
     std::unique_ptr<juce::Drawable> boothSpeaker;
     juce::Image mascot, faceplate;
     juce::TooltipWindow tooltips {this, 600};

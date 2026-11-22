@@ -29,6 +29,7 @@ EffectsPanel::EffectsPanel(DuckerProcessor& p) : owner(p) {
         auto& knob = knobs[i]; const auto& spec = knobSpecs[i];
         knob.zeroDetent = i == 2 || i == 3 || i == 6 || i == 7;
         knob.setComponentID(spec.id); knob.setName(spec.name); knob.setTitle(spec.name); knob.setTooltip(spec.tip);
+        bindParamLock(knob, spec.id);
         knob.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag); knob.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
         knob.setRotaryParameters(juce::MathConstants<float>::pi * 1.25f, juce::MathConstants<float>::pi * 2.75f, true);
         knob.setWantsKeyboardFocus(true); addAndMakeVisible(knob);
@@ -59,6 +60,7 @@ EffectsPanel::EffectsPanel(DuckerProcessor& p) : owner(p) {
         auto& choice = choices[i];
         const auto choiceName = p.parameters.getParameter(choiceIds[i])->getName(64);
         choice.setComponentID(choiceIds[i]); choice.setName(choiceName); choice.setTitle(choiceName); choice.setTooltip(choiceTips[i]);
+        bindParamLock(choice, choiceIds[i]);
         choice.addItemList(choiceItems[i], 1); addAndMakeVisible(choice);
         choiceAttachments[i] = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(p.parameters, choiceIds[i], choice);
     }
@@ -66,6 +68,7 @@ EffectsPanel::EffectsPanel(DuckerProcessor& p) : owner(p) {
     for(size_t i = 0; i < switches.size(); ++i) {
         auto& button = switches[i];
         button.setComponentID(switchIds[i]); button.setClickingTogglesState(true); addAndMakeVisible(button);
+        bindParamLock(button, switchIds[i]);
         switchAttachments[i] = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.parameters, switchIds[i], button);
         button.onStateChange = [this] { refresh(); };
     }

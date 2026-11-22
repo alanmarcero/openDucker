@@ -1070,11 +1070,67 @@ void testSuite(DuckerProcessor& processor, juce::AudioProcessorEditor& editor) {
     directory.deleteRecursively();
     std::cout << "PASS beat-locked waveform, factory programs, undo, A/B and user presets\n";
 }
+
+void testParamLocks() {
+    DuckerProcessor p;
+    std::vector<std::pair<juce::String, float>> expected;
+    int rangedCount = 0;
+    for(auto* parameter : p.getParameters()) {
+        auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter);
+        require(ranged != nullptr, "Every processor parameter must be a RangedAudioParameter");
+        ++rangedCount;
+        const float rawTarget = ranged->getDefaultValue() < 0.5f ? 0.8f : 0.2f;
+        const float target = ranged->convertTo0to1(ranged->convertFrom0to1(rawTarget));
+        ranged->setValueNotifyingHost(target);
+        p.setParamLocked(ranged->paramID, true);
+        require(p.isParamLocked(ranged->paramID), "Parameter lock failed to set");
+        expected.emplace_back(ranged->paramID, ranged->getValue());
+    }
+    require(rangedCount > 0 && p.hasLockedParams(), "No RangedAudioParameter found to lock");
+
+    juce::MemoryBlock state;
+    p.getStateInformation(state);
+    DuckerProcessor restored;
+    restored.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+
+    for(const auto& [id, value] : expected) {
+        require(restored.isParamLocked(id), "Parameter lock did not survive getStateInformation/setStateInformation");
+        auto* param = restored.parameters.getParameter(id);
+        if(param == nullptr || std::abs(param->getValue() - value) >= 1e-5f) {
+            throw std::runtime_error(("Locked parameter value changed across state recall: " + id
+                + " expected=" + juce::String(value) + " actual=" + juce::String(param ? param->getValue() : -1.0f)).toStdString());
+        }
+    }
+
+    require(restored.getNumPrograms() > 1, "Expected multiple factory presets for lock preservation test");
+    restored.setCurrentProgram(1);
+    for(const auto& [id, value] : expected) {
+        auto* param = restored.parameters.getParameter(id);
+        require(param != nullptr && std::abs(param->getValue() - value) < 1e-5f, "Locked parameter was overwritten by preset load");
+    }
+
+    {
+        std::unique_ptr<juce::AudioProcessorEditor> ed(restored.createEditor());
+        ed->setSize(1000, 804);
+        checkButtonLayout(*ed, 40);
+        checkControlTitles(*ed);
+        (void) ed->createComponentSnapshot(ed->getLocalBounds());
+    }
+
+    restored.unlockAllParams();
+    require(!restored.hasLockedParams(), "unlockAllParams did not clear all locks");
+    for(const auto& [id, value] : expected) {
+        (void) value;
+        require(!restored.isParamLocked(id), "A parameter remained locked after unlockAllParams");
+    }
+    std::cout << "PASS parameter locks (" << rangedCount << " RangedAudioParameters)\n";
+}
 }
 
 int main(int argc, char** argv) {
     juce::ScopedJuceInitialiser_GUI gui;
     try {
+        testParamLocks();
         testSync<float>(); testSync<double>(); testTriggers<float>(); testTriggers<double>(); testLookahead<float>(); testLookahead<double>(); testDetectorFilters<float>(); testDetectorFilters<double>(); testBand<float>(); testBand<double>();
         testStandaloneSustain<float>(); testStandaloneSustain<double>(); testNewFxModes();
         testFxMatrix<float>(); testFxMatrix<double>();

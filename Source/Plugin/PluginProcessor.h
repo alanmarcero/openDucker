@@ -1,5 +1,7 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <mutex>
+#include <set>
 #include "ABCompare.h"
 #include "ArtworkBeatClock.h"
 #include "Crossover.h"
@@ -75,8 +77,15 @@ public:
     std::atomic<int> editorWidth {1000};
     std::atomic<bool> effectsShown {true};
     void triggerDemoImpact() noexcept { triggerDemo.store(true); }
+    bool isParamLocked(const juce::String& paramId) const;
+    void setParamLocked(const juce::String& paramId, bool locked);
+    void unlockAllParams();
+    bool hasLockedParams() const;
 
 private:
+    mutable std::mutex lockMutex;
+    std::set<juce::String> lockedParams;
+    void applyLockedParamsToState(juce::ValueTree& targetState) const;
     std::atomic<bool> triggerDemo {false};
     int demoImpactSamplesLeft = 0;
     double demoPhase = 0;

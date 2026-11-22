@@ -344,6 +344,7 @@ void CurveDisplay::mouseMove(const juce::MouseEvent& e) {
     setMouseCursor(overHandle(e.position) ? juce::MouseCursor::LeftRightResizeCursor : juce::MouseCursor::NormalCursor);
 }
 void CurveDisplay::mouseDown(const juce::MouseEvent& e) {
+    if(e.mods.isPopupMenu()) return;
     dragging = overHandle(e.position);
     if(dragging) owner.parameters.getParameter("length")->beginChangeGesture();
     // A click on the detector meter clears its clip light.
@@ -503,7 +504,7 @@ void CurveDisplay::paint(juce::Graphics& g) {
 }
 
 DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(p), display(p), effectsPanel(p),
-    suiteBar(p, {look::panel, look::paper, look::muted, look::yellow, look::mint, look::background}) {
+    suiteBar(p, {look::panel, look::paper, look::muted, look::yellow, look::mint, look::background}), lockOverlay(p) {
     setLookAndFeel(&theme);
     boothSpeaker = juce::Drawable::createFromImageData(BinaryData::boothspeaker_svg, BinaryData::boothspeaker_svgSize);
     auto heroDuck = juce::ImageCache::getFromMemory(BinaryData::cyberduckhero_png, BinaryData::cyberduckhero_pngSize);
@@ -544,6 +545,7 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
     };
 
     mix.setComponentID("mix"); mix.setName("Mix"); mix.setTitle("Mix");
+    bindParamLock(mix, "mix");
     mix.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag); mix.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
     mix.setRotaryParameters(pi * 1.25f, pi * 2.75f, true); mix.setDoubleClickReturnValue(true, 100);
     mix.setTooltip("Blend between the original signal and the ducked signal. Double-click to reset to 100%.");
@@ -563,6 +565,7 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
     configureBar(lookahead, "lookahead", "Lookahead", "Delays the audio by up to 5 ms so each duck reaches its floor before the transient. "
         "The plugin reports this delay to the host as latency. Off adds no latency.");
     bandSlope.setComponentID("bandSlope");
+    bindParamLock(bandSlope, "bandSlope");
     bandSlope.setName("Band slope");
     bandSlope.setTitle("Band slope");
     bandSlope.addItemList({"12 dB/oct", "24 dB/oct", "48 dB/oct"}, 1);
@@ -591,6 +594,7 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
     detectorHpf.setDoubleClickReturnValue(true, 0);
     detectorLpf.setDoubleClickReturnValue(true, 0);
     detectorMonitorButton.setComponentID("detectorMonitor");
+    bindParamLock(detectorMonitorButton, "detectorMonitor");
     detectorMonitorButton.setTitle("Listen");
     detectorMonitorButton.setClickingTogglesState(true);
     detectorMonitorButton.setTooltip("Listen to the filtered detector input in place of the processed output.");
@@ -603,6 +607,7 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
         rateButtons[i].setButtonText(rateNames[static_cast<int>(i)]);
         rateButtons[i].setTitle(rateNames[static_cast<int>(i)]);
         rateButtons[i].setComponentID("rate" + juce::String(static_cast<int>(i)));
+        bindParamLock(rateButtons[i], "rate");
         rateButtons[i].setTooltip("Length of one ducking cycle, synced to the host tempo.");
         rateButtons[i].onClick = [this, i] { setChoice("rate", static_cast<int>(i)); };
         content.addAndMakeVisible(rateButtons[i]);
@@ -614,18 +619,22 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
         triggerButtons[i].setButtonText(triggerNames[static_cast<int>(i)]);
         triggerButtons[i].setTitle(triggerNames[static_cast<int>(i)]);
         triggerButtons[i].setComponentID("trigger" + juce::String(static_cast<int>(i)));
+        bindParamLock(triggerButtons[i], "trigger");
         triggerButtons[i].setTooltip(triggerTips[static_cast<int>(i)]);
         triggerButtons[i].onClick = [this, i] { setChoice("trigger", static_cast<int>(i)); };
         content.addAndMakeVisible(triggerButtons[i]);
     }
     bandButton.setButtonText("Low band"); bandButton.setTitle("Low band"); bandButton.setComponentID("band"); bandButton.setClickingTogglesState(true);
+    bindParamLock(bandButton, "bandOn");
     bandButton.setTooltip("Duck only the low band below the band frequency.");
     bandButton.onStateChange = [this] { refreshActivity(); };
     content.addAndMakeVisible(bandButton);
 
     retrigger.setComponentID("retrigger"); retrigger.setClickingTogglesState(true);
+    bindParamLock(retrigger, "retrigger");
     retrigger.setTooltip("Retrigger: when on, incoming triggers restart an active curve immediately. Select MIDI or Audio to use it.");
     solo.setComponentID("solo"); solo.setClickingTogglesState(true); solo.setTooltip("Listen to the isolated ducked low band. Turn on Low band to use it.");
+    bindParamLock(solo, "bandSolo");
     menu.setComponentID("menu"); menu.setTooltip("Reset slope and shift, or show the version and license.");
     menu.onClick = [this] { showMenu(); };
     previous.setComponentID("previous"); previous.setTooltip("Previous curve."); previous.onClick = [this] { stepCurve(-1); };
@@ -649,23 +658,27 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
     for(int i = 0; i < duck::curveCount; ++i) {
         auto button = std::make_unique<CurveButton>(i);
         button->setComponentID("curve" + juce::String(i));
+        bindParamLock(*button, "curve");
         button->setTitle(duck::curveNames[static_cast<size_t>(i)]);
         button->setTooltip(juce::String(duck::curveNames[static_cast<size_t>(i)]) + " curve.");
         button->onClick = [this, i] { setChoice("curve", i); };
         content.addAndMakeVisible(*button);
         curveButtons.push_back(std::move(button));
     }
+    content.addAndMakeVisible(lockOverlay);
+    content.addMouseListener(&lockOverlay, true);
     const auto selectInGroup = [](auto& buttons, float value) {
         for(size_t i = 0; i < buttons.size(); ++i) buttons[i].setToggleState(static_cast<int>(i) == juce::roundToInt(value), juce::dontSendNotification);
     };
     rateAttachment = std::make_unique<juce::ParameterAttachment>(*p.parameters.getParameter("rate"),
-        [this, selectInGroup](float value) { selectInGroup(rateButtons, value); }, nullptr);
+        [this, selectInGroup](float value) { selectInGroup(rateButtons, value); lockOverlay.repaint(); }, nullptr);
     triggerAttachment = std::make_unique<juce::ParameterAttachment>(*p.parameters.getParameter("trigger"),
-        [this, selectInGroup](float value) { selectInGroup(triggerButtons, value); refreshActivity(); repaint(); }, nullptr);
+        [this, selectInGroup](float value) { selectInGroup(triggerButtons, value); refreshActivity(); lockOverlay.repaint(); repaint(); }, nullptr);
     curveAttachment = std::make_unique<juce::ParameterAttachment>(*p.parameters.getParameter("curve"),
         [this](float value) {
             for(size_t i = 0; i < curveButtons.size(); ++i) curveButtons[i]->setToggleState(static_cast<int>(i) == juce::roundToInt(value), juce::dontSendNotification);
             display.repaint();
+            lockOverlay.repaint();
         }, nullptr);
     rateAttachment->sendInitialUpdate(); triggerAttachment->sendInitialUpdate(); curveAttachment->sendInitialUpdate();
     setResizable(true, true);
@@ -675,10 +688,11 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
     startTimerHz(refreshHz);
 }
 
-DuckerEditor::~DuckerEditor() { stopTimer(); setLookAndFeel(nullptr); }
+DuckerEditor::~DuckerEditor() { content.removeMouseListener(&lockOverlay); stopTimer(); setLookAndFeel(nullptr); }
 
 void DuckerEditor::configureBar(juce::Slider& slider, const char* id, const juce::String& name, const char* tip) {
     slider.setComponentID(id); slider.setName(name); slider.setTitle(name); slider.setTooltip(tip);
+    bindParamLock(slider, id);
     slider.setSliderStyle(juce::Slider::LinearBar); slider.setSliderSnapsToMousePosition(false);
     content.addAndMakeVisible(slider);
     // A click without a drag opens this text box for typing.
@@ -781,6 +795,7 @@ void DuckerEditor::resized() {
     detectorMonitorButton.setBounds(area(834, 496, 150, 40));
 
     effectsPanel.setBounds(area(22, 552, 962, 198));
+    lockOverlay.setBounds(content.getLocalBounds());
 }
 
 void DuckerEditor::paintDuckBooth(juce::Graphics& g, juce::Rectangle<float> area, float s) {
@@ -900,4 +915,71 @@ bool DuckerEditor::keyPressed(const juce::KeyPress& key) {
         return true;
     }
     return false;
+}
+
+void ParamLockOverlay::paint(juce::Graphics& g) {
+    if(auto* parent = getParentComponent()) paintLocksIn(g, *parent);
+}
+
+void ParamLockOverlay::paintLocksIn(juce::Graphics& g, juce::Component& parent) {
+    for(int i = 0; i < parent.getNumChildComponents(); ++i) {
+        auto* child = parent.getChildComponent(i);
+        if(child == this || !child->isVisible()) continue;
+        const auto& props = child->getProperties();
+        if(props.contains("paramLockId")) {
+            const auto paramId = props["paramLockId"].toString();
+            if(owner.isParamLocked(paramId)) {
+                const bool isRadioGroup = paramId == "rate" || paramId == "trigger" || paramId == "curve";
+                auto* button = dynamic_cast<juce::Button*>(child);
+                if(!isRadioGroup || (button != nullptr && button->getToggleState())) {
+                    const auto bounds = getLocalArea(child, child->getLocalBounds().toFloat());
+                    constexpr float badgeW = 12.0f, badgeH = 13.0f;
+                    const juce::Rectangle<float> badge {
+                        bounds.getRight() - badgeW - 2.0f,
+                        bounds.getY() + 2.0f,
+                        badgeW, badgeH
+                    };
+                    g.setColour(look::ink.withAlpha(0.82f));
+                    g.fillRoundedRectangle(badge, 3.0f);
+                    g.setColour(look::yellow);
+                    const float cx = badge.getCentreX(), cy = badge.getY() + 5.0f;
+                    juce::Path shackle;
+                    shackle.addCentredArc(cx, cy, 2.2f, 2.4f, 0.0f, -juce::MathConstants<float>::halfPi, juce::MathConstants<float>::halfPi, true);
+                    g.strokePath(shackle, juce::PathStrokeType(1.3f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+                    const juce::Rectangle<float> body {cx - 3.2f, cy, 6.4f, 5.0f};
+                    g.fillRoundedRectangle(body, 1.2f);
+                    g.setColour(look::ink);
+                    g.fillEllipse(cx - 0.8f, body.getCentreY() - 0.8f, 1.6f, 1.6f);
+                }
+            }
+        }
+        if(child->getNumChildComponents() > 0) paintLocksIn(g, *child);
+    }
+}
+
+void ParamLockOverlay::mouseDown(const juce::MouseEvent& e) {
+    if(!e.mods.isPopupMenu()) return;
+    juce::Component* target = e.eventComponent;
+    juce::String paramId;
+    while(target != nullptr) {
+        if(target->getProperties().contains("paramLockId")) {
+            paramId = target->getProperties()["paramLockId"].toString();
+            break;
+        }
+        target = target->getParentComponent();
+    }
+    if(paramId.isEmpty() || target == nullptr) return;
+    auto* param = owner.parameters.getParameter(paramId);
+    if(param == nullptr) return;
+    const bool locked = owner.isParamLocked(paramId);
+    juce::PopupMenu menu;
+    menu.addItem(1, juce::String(locked ? "Unlock " : "Lock ") + param->getName(64));
+    if(owner.hasLockedParams()) menu.addItem(2, "Unlock all parameters");
+    juce::Component::SafePointer<ParamLockOverlay> safeThis(this);
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(target), [safeThis, paramId, locked](int result) {
+        if(safeThis == nullptr || result == 0) return;
+        if(result == 1) safeThis->owner.setParamLocked(paramId, !locked);
+        else if(result == 2) safeThis->owner.unlockAllParams();
+        safeThis->repaint();
+    });
 }

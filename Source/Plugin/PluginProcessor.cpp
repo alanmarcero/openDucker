@@ -497,12 +497,59 @@ void DuckerProcessor::copyBToA() {
     if(abCompare.isA()) resetEffects.store(true);
 }
 
+bool DuckerProcessor::isParamLocked(const juce::String& paramId) const {
+    std::scoped_lock lock(lockMutex);
+    return lockedParams.count(paramId) > 0;
+}
+
+void DuckerProcessor::setParamLocked(const juce::String& paramId, bool locked) {
+    if(locked && parameters.getParameter(paramId) == nullptr) return;
+    std::scoped_lock lock(lockMutex);
+    if(locked) lockedParams.insert(paramId);
+    else lockedParams.erase(paramId);
+}
+
+void DuckerProcessor::unlockAllParams() {
+    std::scoped_lock lock(lockMutex);
+    lockedParams.clear();
+}
+
+bool DuckerProcessor::hasLockedParams() const {
+    std::scoped_lock lock(lockMutex);
+    return !lockedParams.empty();
+}
+
+void DuckerProcessor::applyLockedParamsToState(juce::ValueTree& targetState) const {
+    std::set<juce::String> lockedCopy;
+    {
+        std::scoped_lock lock(lockMutex);
+        if(lockedParams.empty()) return;
+        lockedCopy = lockedParams;
+    }
+    for(auto* param : getParameters()) {
+        auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(param);
+        if(ranged == nullptr || lockedCopy.count(ranged->paramID) == 0) continue;
+        const float currentValue = ranged->convertFrom0to1(ranged->getValue());
+        auto child = targetState.getChildWithProperty("id", ranged->paramID);
+        if(child.isValid()) {
+            child.setProperty("value", currentValue, nullptr);
+        } else {
+            juce::ValueTree added {"PARAM"};
+            added.setProperty("id", ranged->paramID, nullptr);
+            added.setProperty("value", currentValue, nullptr);
+            targetState.addChild(added, -1, nullptr);
+        }
+    }
+}
+
 bool DuckerProcessor::loadPreset(const juce::String& key) {
     const auto entry = presetLibrary.find(key);
     if(!entry) return false;
     const auto before = snap();
+    auto nextState = entry->state.createCopy();
+    applyLockedParamsToState(nextState);
     parameterUndo.suspend();
-    parameters.replaceState(entry->state.createCopy());
+    parameters.replaceState(nextState);
     if(entry->factory) currentProgram = entry->program;
     presetLibrary.setActiveKey(key);
     abCompare.captureActive();
@@ -527,6 +574,18 @@ void DuckerProcessor::getStateInformation(juce::MemoryBlock& data) {
     state.setProperty("editorWidth", editorWidth.load(), nullptr);
     state.setProperty("effectsShown", effectsShown.load(), nullptr);
     state.addChild(abCompare.toTree(), -1, nullptr);
+    {
+        std::scoped_lock lock(lockMutex);
+        if(!lockedParams.empty()) {
+            juce::ValueTree lockedTree {"lockedParams"};
+            for(const auto& id : lockedParams) {
+                juce::ValueTree item {"PARAM"};
+                item.setProperty("id", id, nullptr);
+                lockedTree.addChild(item, -1, nullptr);
+            }
+            state.addChild(lockedTree, -1, nullptr);
+        }
+    }
     if(auto xml = state.createXml()) copyXmlToBinary(*xml, data);
 }
 void DuckerProcessor::setStateInformation(const void* data, int size) {
@@ -534,6 +593,8 @@ void DuckerProcessor::setStateInformation(const void* data, int size) {
         auto state = juce::ValueTree::fromXml(*xml);
         auto suite = state.getChildWithName("suite");
         if(suite.isValid()) state.removeChild(suite, nullptr);
+        auto lockedTree = state.getChildWithName("lockedParams");
+        if(lockedTree.isValid()) state.removeChild(lockedTree, nullptr);
         const bool hasProgram = state.hasProperty("program");
         const int program = hasProgram ? static_cast<int>(state.getProperty("program")) : currentProgram;
         const auto presetKey = state.getProperty("presetKey").toString();
@@ -560,6 +621,14 @@ void DuckerProcessor::setStateInformation(const void* data, int size) {
         parameterUndo.suspend();
         parameters.replaceState(state);
         parameterUndo.resume();
+        unlockAllParams();
+        if(lockedTree.isValid()) {
+            for(int i = 0; i < lockedTree.getNumChildren(); ++i) {
+                const auto id = lockedTree.getChild(i).getProperty("id").toString();
+                if(id.isNotEmpty() && parameters.getParameter(id) != nullptr)
+                    setParamLocked(id, true);
+            }
+        }
         if(presetKey.isNotEmpty()) presetLibrary.setActiveKey(presetKey, presetEdited);
         if(suite.isValid()) abCompare.readTree(suite);
         else abCompare.resetBothFromCurrent();
