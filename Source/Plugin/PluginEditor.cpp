@@ -50,9 +50,44 @@ juce::Path curvePath(int curve, juce::Rectangle<float> area, int points) {
     path.lineTo(area.getRight(), area.getBottom() - static_cast<float>(duck::curveValue(curve, 0)) * area.getHeight());
     return path;
 }
+
+int triggerModeIndex(const DuckerProcessor& owner) {
+    auto* param = owner.parameters.getParameter("trigger");
+    return param != nullptr ? juce::roundToInt(param->convertFrom0to1(param->getValue())) : 0;
 }
 
-DuckLookAndFeel::DuckLookAndFeel() {
+void drawPadlockBadge(juce::Graphics& g, juce::Rectangle<float> badge, float alpha) {
+    g.setColour(look::ink.withAlpha(0.82f * alpha));
+    g.fillRoundedRectangle(badge, 3.0f);
+    g.setColour(look::yellow.withAlpha(alpha));
+    const float cx = badge.getCentreX(), cy = badge.getY() + 5.0f;
+    juce::Path shackle;
+    shackle.addCentredArc(cx, cy, 2.2f, 2.4f, 0.0f, -juce::MathConstants<float>::halfPi, juce::MathConstants<float>::halfPi, true);
+    g.strokePath(shackle, juce::PathStrokeType(1.3f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    const juce::Rectangle<float> body {cx - 3.2f, cy, 6.4f, 5.0f};
+    g.fillRoundedRectangle(body, 1.2f);
+    g.setColour(look::ink.withAlpha(alpha));
+    g.fillEllipse(cx - 0.8f, body.getCentreY() - 0.8f, 1.6f, 1.6f);
+}
+
+void showParamLockMenu(DuckerProcessor& owner, juce::Component& target, const juce::String& paramId, std::function<void()> onDone) {
+    auto* param = owner.parameters.getParameter(paramId);
+    if(param == nullptr) return;
+    const bool locked = owner.isParamLocked(paramId);
+    juce::PopupMenu menu;
+    menu.addItem(1, juce::String(locked ? "Unlock " : "Lock ") + param->getName(64));
+    if(owner.hasLockedParams()) menu.addItem(2, "Unlock all parameters");
+    juce::Component::SafePointer<juce::Component> safeTarget(&target);
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(target), [&owner, safeTarget, paramId, locked, callback = std::move(onDone)](int result) {
+        if(safeTarget == nullptr || result == 0) return;
+        if(result == 1) owner.setParamLocked(paramId, !locked);
+        else if(result == 2) owner.unlockAllParams();
+        if(callback) callback();
+    });
+}
+}
+
+DuckLookAndFeel::DuckLookAndFeel(DuckerProcessor& p) : owner(p) {
     setColour(juce::ComboBox::backgroundColourId, look::panel);
     setColour(juce::ComboBox::textColourId, look::paper);
     setColour(juce::ComboBox::outlineColourId, juce::Colours::transparentBlack);
@@ -175,14 +210,19 @@ void DuckLookAndFeel::drawLinearSlider(juce::Graphics& g, int x, int y, int widt
     const bool bipolar = slider.getMinimum() < 0 && slider.getMaximum() > 0;
     const float left = bounds.getX(), zero = left + bounds.getWidth() * static_cast<float>(slider.valueToProportionOfLength(0));
     const float origin = bipolar ? zero : left;
-    g.setColour(look::mint.withAlpha(0.22f));
-    g.fillRoundedRectangle(juce::Rectangle<float>::leftTopRightBottom(std::min(origin, position), bounds.getY(), std::max(origin, position), bounds.getBottom()), 4);
+    const bool suppressFill = slider.getComponentID() == "detectorLpf" && slider.getValue() < 1.0;
+    if(!suppressFill) {
+        g.setColour(look::mint.withAlpha(0.22f));
+        g.fillRoundedRectangle(juce::Rectangle<float>::leftTopRightBottom(std::min(origin, position), bounds.getY(), std::max(origin, position), bounds.getBottom()), 4);
+    }
     g.setColour(look::muted.withAlpha(0.3f));
     g.drawRoundedRectangle(bounds, 4, 1);
     const auto text = bounds.reduced(look::barPadding, 0);
+    const auto lockId = slider.getProperties()["paramLockId"].toString();
+    const bool locked = lockId.isNotEmpty() && owner.isParamLocked(lockId);
     const float size = bounds.getHeight() * look::barTextScale;
     drawText(g, slider.getName(), text, size, look::paper, juce::Justification::centredLeft, true);
-    drawText(g, slider.getTextFromValue(slider.getValue()), text, size, look::paper, juce::Justification::centredRight, true);
+    drawText(g, slider.getTextFromValue(slider.getValue()), text.withTrimmedRight(locked ? 14.0f : 0.0f), size, look::paper, juce::Justification::centredRight, true);
 }
 
 void DuckLookAndFeel::drawButtonBackground(juce::Graphics& g, juce::Button& button, const juce::Colour&, bool over, bool down) {
@@ -207,6 +247,8 @@ void DuckLookAndFeel::drawButtonText(juce::Graphics& g, juce::TextButton& button
 
 juce::Label* DuckLookAndFeel::createSliderTextBox(juce::Slider& slider) {
     auto* box = LookAndFeel_V4::createSliderTextBox(slider);
+    if(slider.getSliderStyle() == juce::Slider::RotaryHorizontalVerticalDrag)
+        box->setJustificationType(juce::Justification::centred);
     // The bar draws its own name and value, so the box shows text only while typing.
     box->setColour(juce::Label::textColourId, juce::Colours::transparentBlack);
     box->setColour(juce::Label::outlineColourId, juce::Colours::transparentBlack);
@@ -215,6 +257,24 @@ juce::Label* DuckLookAndFeel::createSliderTextBox(juce::Slider& slider) {
     box->setColour(juce::TextEditor::highlightColourId, look::mint.withAlpha(0.35f));
     box->setColour(juce::TextEditor::focusedOutlineColourId, look::mint);
     return box;
+}
+
+juce::Slider::SliderLayout DuckLookAndFeel::getSliderLayout(juce::Slider& slider) {
+    if(slider.getSliderStyle() != juce::Slider::RotaryHorizontalVerticalDrag
+       || slider.getTextBoxPosition() != juce::Slider::TextBoxBelow)
+        return LookAndFeel_V4::getSliderLayout(slider);
+    juce::Slider::SliderLayout layout;
+    const auto local = slider.getLocalBounds();
+    layout.sliderBounds = local;
+    const float w = static_cast<float>(local.getWidth()), h = static_cast<float>(local.getHeight());
+    if(slider.getComponentID() == "mix") {
+        const float labelHeight = h * 0.16f;
+        layout.textBoxBounds = juce::Rectangle<float>(0.0f, h - labelHeight - 4.0f, w, labelHeight * 0.65f).toNearestInt();
+    } else {
+        const float s = h / 104.0f;
+        layout.textBoxBounds = juce::Rectangle<float>(0.0f, 55.0f * s, w, 19.0f * s).toNearestInt();
+    }
+    return layout;
 }
 
 void GlyphButton::paintButton(juce::Graphics& g, bool over, bool down) {
@@ -330,9 +390,18 @@ float CurveDisplay::handleX() const {
     return end * static_cast<float>(getWidth());
 }
 
+juce::Rectangle<float> CurveDisplay::handleBounds() const {
+    const float width = static_cast<float>(getWidth());
+    const float handleWidth = dragging ? 52.0f : 32.0f;
+    const float right = std::min(width - 2.0f, std::max(handleWidth + 2.0f, handleX() - 2.0f));
+    return juce::Rectangle<float>(handleWidth, 28.0f).withRightX(right).withY(6.0f);
+}
+
 bool CurveDisplay::overHandle(juce::Point<float> point) const {
-    const float edge = handleX();
-    return std::abs(point.x - edge) < 8.0f || juce::Rectangle<float>(edge - 36, 6, 36, 30).contains(point);
+    if(triggerModeIndex(owner) == 2
+       && juce::Rectangle<float>(static_cast<float>(getWidth()) - 22.0f, 36.0f, 16.0f, static_cast<float>(getHeight()) - 36.0f).contains(point))
+        return false;
+    return std::abs(point.x - handleX()) < 8.0f || handleBounds().expanded(4.0f, 2.0f).contains(point);
 }
 
 void CurveDisplay::setLength(float fraction) {
@@ -344,20 +413,35 @@ void CurveDisplay::mouseMove(const juce::MouseEvent& e) {
     setMouseCursor(overHandle(e.position) ? juce::MouseCursor::LeftRightResizeCursor : juce::MouseCursor::NormalCursor);
 }
 void CurveDisplay::mouseDown(const juce::MouseEvent& e) {
-    if(e.mods.isPopupMenu()) return;
+    if(e.mods.isPopupMenu()) {
+        if(overHandle(e.position)) {
+            juce::Component::SafePointer<CurveDisplay> safeThis(this);
+            showParamLockMenu(owner, *this, "length", [safeThis] {
+                if(safeThis == nullptr) return;
+                safeThis->repaint();
+                if(auto* parent = safeThis->getParentComponent()) parent->repaint();
+            });
+        }
+        return;
+    }
     dragging = overHandle(e.position);
-    if(dragging) owner.parameters.getParameter("length")->beginChangeGesture();
+    if(dragging) {
+        dragStartX = e.position.x;
+        dragStartLength = lengthFraction();
+        owner.parameters.getParameter("length")->beginChangeGesture();
+    }
     // A click on the detector meter clears its clip light.
-    if(!dragging && e.position.x > static_cast<float>(getWidth()) - 26.0f) clipped = false;
+    if(!dragging && e.position.x > static_cast<float>(getWidth()) - 26.0f) {
+        clipped = false;
+        repaint();
+    }
 }
-void CurveDisplay::setLengthFromPointer(float x) {
-    const float beat = juce::jlimit(0.0f, 1.0f, x / static_cast<float>(std::max(1, getWidth())));
-    float length = beat - shiftFraction();
-    if(length < 0.0f) length += 1.0f;
-    setLength(length);
+void CurveDisplay::setLengthFromDrag(float x) {
+    const float delta = (x - dragStartX) / static_cast<float>(std::max(1, getWidth()));
+    setLength(juce::jlimit(0.05f, 1.0f, dragStartLength + delta));
 }
 void CurveDisplay::mouseDrag(const juce::MouseEvent& e) {
-    if(dragging) setLengthFromPointer(e.position.x);
+    if(dragging) setLengthFromDrag(e.position.x);
 }
 void CurveDisplay::mouseUp(const juce::MouseEvent&) {
     if(!dragging) return;
@@ -365,7 +449,7 @@ void CurveDisplay::mouseUp(const juce::MouseEvent&) {
     owner.parameters.getParameter("length")->endChangeGesture();
 }
 void CurveDisplay::mouseDoubleClick(const juce::MouseEvent& e) {
-    if(!overHandle(e.position)) return;
+    if(e.mods.isPopupMenu() || !overHandle(e.position)) return;
     auto* parameter = owner.parameters.getParameter("length");
     parameter->beginChangeGesture(); parameter->setValueNotifyingHost(1.0f); parameter->endChangeGesture();
 }
@@ -466,7 +550,7 @@ void CurveDisplay::paint(juce::Graphics& g) {
     }
 
     // In Audio mode, a dBFS meter shows the detector level against Threshold, with a 1 s peak hold and a clip light.
-    if(static_cast<int>(owner.parameters.getRawParameterValue("trigger")->load()) == 2) {
+    if(triggerModeIndex(owner) == 2) {
         const auto meter = juce::Rectangle<float>(width - 18, 52, 10, height - 60);
         const auto heightOf = [&](float level) {
             return meter.getHeight() * juce::jlimit(0.0f, 1.0f, juce::Decibels::gainToDecibels(level, -60.0f) / 60.0f + 1.0f);
@@ -487,23 +571,25 @@ void CurveDisplay::paint(juce::Graphics& g) {
     }
 
     // Draggable slope handle. It widens to show the slope value while dragging.
-    const float edge = handleX();
-    const float handleWidth = dragging ? 52.0f : 32.0f;
-    const auto handle = juce::Rectangle<float>(handleWidth, 28).withRightX(std::min(width - 2, std::max(handleWidth + 2, edge - 2))).withY(6);
+    const auto handle = handleBounds();
+    const bool lengthLocked = owner.isParamLocked("length");
     g.setColour(look::panel.brighter(0.15f));
     g.fillRoundedRectangle(handle, 4);
     g.setColour(look::muted.withAlpha(0.4f));
     g.drawRoundedRectangle(handle, 4, 1);
     if(dragging) {
         drawText(g, owner.parameters.getParameter("length")->getCurrentValueAsText(), handle, 13.0f, look::paper);
-        return;
+    } else {
+        g.setColour(look::paper);
+        const float gripCenter = handle.getCentreX() - (lengthLocked ? 4.0f : 0.0f);
+        for(int line = -1; line <= 1; ++line)
+            g.fillRect(gripCenter + static_cast<float>(line) * 5.0f - 1, handle.getY() + 6, 2.0f, 16.0f);
     }
-    g.setColour(look::paper);
-    for(int line = -1; line <= 1; ++line)
-        g.fillRect(handle.getCentreX() + static_cast<float>(line) * 5.0f - 1, handle.getY() + 6, 2.0f, 16.0f);
+    if(lengthLocked)
+        drawPadlockBadge(g, {handle.getRight() - 12.0f, handle.getY() + 2.0f, 10.0f, 12.0f}, 1.0f);
 }
 
-DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(p), display(p), effectsPanel(p),
+DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(p), theme(p), display(p), effectsPanel(p),
     suiteBar(p, {look::panel, look::paper, look::muted, look::yellow, look::mint, look::background}), lockOverlay(p) {
     setLookAndFeel(&theme);
     boothSpeaker = juce::Drawable::createFromImageData(BinaryData::boothspeaker_svg, BinaryData::boothspeaker_svgSize);
@@ -546,10 +632,11 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
 
     mix.setComponentID("mix"); mix.setName("Mix"); mix.setTitle("Mix");
     bindParamLock(mix, "mix");
-    mix.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag); mix.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+    mix.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
     mix.setRotaryParameters(pi * 1.25f, pi * 2.75f, true); mix.setDoubleClickReturnValue(true, 100);
     mix.setTooltip("Blend between the original signal and the ducked signal. Double-click to reset to 100%.");
     content.addAndMakeVisible(mix);
+    mix.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 68, 18);
     mixAttachment = std::make_unique<SliderAttachment>(p.parameters, "mix", mix);
 
     configureBar(band, "bandFrequency", "Band", "Band split frequency. With Low band on, only frequencies below this point duck.");
@@ -561,6 +648,8 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
     floor.setDoubleClickReturnValue(true, 0);
     configureBar(threshold, "threshold", "Threshold", "Audio trigger level. Uses the sidechain input when connected, otherwise the main input. Select Audio to use it.");
     threshold.setDoubleClickReturnValue(true, -24);
+    for(auto* bar : {&shift, &slope, &tension, &floor, &threshold})
+        bar->onValueChange = [this] { display.repaint(); };
     configureBar(smoothing, "smoothing", "Smoothing", "Softens the gain changes of every duck: Off, Low (1 ms), Medium (3 ms) or High (8 ms).");
     configureBar(lookahead, "lookahead", "Lookahead", "Delays the audio by up to 5 ms so each duck reaches its floor before the transient. "
         "The plugin reports this delay to the host as latency. Off adds no latency.");
@@ -581,7 +670,7 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
     detectorLpf.setNormalisableRange({0.0, 20000.0,
         [cutoff](double, double, double position) {
             if(position >= offStart) return 0.0;
-            return cutoff.convertFrom0to1(position / openEnd);
+            return cutoff.convertFrom0to1(std::min(1.0, position / openEnd));
         },
         [cutoff](double, double, double hertz) {
             if(hertz < 1.0) return 1.0;
@@ -728,10 +817,7 @@ void DuckerEditor::showMenu() {
 }
 
 void DuckerEditor::refreshActivity() {
-    auto* triggerParameter = owner.parameters.getParameter("trigger");
-    const int mode = triggerParameter != nullptr
-        ? juce::roundToInt(triggerParameter->convertFrom0to1(triggerParameter->getValue()))
-        : 0;
+    const int mode = triggerModeIndex(owner);
     const bool detectorHeard = mode == 2 || detectorMonitorButton.getToggleState();
     threshold.setAlpha(mode == 2 ? 1.0f : look::inactiveAlpha);
     retrigger.setAlpha(mode != 0 ? 1.0f : look::inactiveAlpha);
@@ -745,7 +831,7 @@ void DuckerEditor::timerCallback() {
     display.tick();
     display.repaint();
     suiteBar.refresh();
-    if(effectsPanel.isVisible()) effectsPanel.repaint(660, 4, 306, 74);
+    if(effectsPanel.isVisible()) effectsPanel.repaint(530, 4, 436, 74);
     repaint(0, 0, getWidth() * 35 / 100, juce::roundToInt((280.0f + contentShift) * static_cast<float>(getWidth()) / 1000.0f));
 }
 
@@ -873,7 +959,7 @@ void DuckerEditor::paint(juce::Graphics& g) {
 
     // Host / Trigger Sync Status Pill
     const int state = owner.syncState.load(std::memory_order_relaxed);
-    const auto mode = static_cast<int>(owner.parameters.getRawParameterValue("trigger")->load());
+    const int mode = triggerModeIndex(owner);
     const bool ledOn = (mode == 0 && state == 2) || (mode != 0 && display.isFlashing());
     const juce::String status = mode == 1 ? "MIDI Trigger" : (mode == 2 ? "Audio Trigger"
         : (state == 2 ? juce::String(owner.hostBpm.load(std::memory_order_relaxed), 1) + " BPM" : (state == 1 ? "Host Stopped" : "No Sync")));
@@ -934,22 +1020,28 @@ void ParamLockOverlay::paintLocksIn(juce::Graphics& g, juce::Component& parent) 
                 if(!isRadioGroup || (button != nullptr && button->getToggleState())) {
                     const auto bounds = getLocalArea(child, child->getLocalBounds().toFloat());
                     constexpr float badgeW = 12.0f, badgeH = 13.0f;
-                    const juce::Rectangle<float> badge {
+                    juce::Rectangle<float> badge {
                         bounds.getRight() - badgeW - 2.0f,
                         bounds.getY() + 2.0f,
                         badgeW, badgeH
                     };
-                    g.setColour(look::ink.withAlpha(0.82f));
-                    g.fillRoundedRectangle(badge, 3.0f);
-                    g.setColour(look::yellow);
-                    const float cx = badge.getCentreX(), cy = badge.getY() + 5.0f;
-                    juce::Path shackle;
-                    shackle.addCentredArc(cx, cy, 2.2f, 2.4f, 0.0f, -juce::MathConstants<float>::halfPi, juce::MathConstants<float>::halfPi, true);
-                    g.strokePath(shackle, juce::PathStrokeType(1.3f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-                    const juce::Rectangle<float> body {cx - 3.2f, cy, 6.4f, 5.0f};
-                    g.fillRoundedRectangle(body, 1.2f);
-                    g.setColour(look::ink);
-                    g.fillEllipse(cx - 0.8f, body.getCentreY() - 0.8f, 1.6f, 1.6f);
+                    if(auto* slider = dynamic_cast<juce::Slider*>(child);
+                       slider != nullptr && slider->getSliderStyle() == juce::Slider::RotaryHorizontalVerticalDrag) {
+                        juce::Point<float> centre;
+                        float radius = 0.0f;
+                        if(slider->getComponentID() == "mix") {
+                            const auto knobArea = bounds.withTrimmedBottom(bounds.getHeight() * 0.16f);
+                            centre = knobArea.getCentre();
+                            radius = std::min(knobArea.getWidth(), knobArea.getHeight()) * 0.46f;
+                        } else {
+                            const float s = bounds.getHeight() / 104.0f;
+                            centre = {bounds.getCentreX(), bounds.getY() + 28.0f * s};
+                            radius = 21.5f * s;
+                        }
+                        badge = juce::Rectangle<float>(badgeW, badgeH)
+                            .withCentre(centre + juce::Point<float>(radius * 0.85f, -radius * 0.85f));
+                    }
+                    drawPadlockBadge(g, badge, child->getAlpha());
                 }
             }
         }
@@ -969,17 +1061,10 @@ void ParamLockOverlay::mouseDown(const juce::MouseEvent& e) {
         target = target->getParentComponent();
     }
     if(paramId.isEmpty() || target == nullptr) return;
-    auto* param = owner.parameters.getParameter(paramId);
-    if(param == nullptr) return;
-    const bool locked = owner.isParamLocked(paramId);
-    juce::PopupMenu menu;
-    menu.addItem(1, juce::String(locked ? "Unlock " : "Lock ") + param->getName(64));
-    if(owner.hasLockedParams()) menu.addItem(2, "Unlock all parameters");
     juce::Component::SafePointer<ParamLockOverlay> safeThis(this);
-    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(target), [safeThis, paramId, locked](int result) {
-        if(safeThis == nullptr || result == 0) return;
-        if(result == 1) safeThis->owner.setParamLocked(paramId, !locked);
-        else if(result == 2) safeThis->owner.unlockAllParams();
-        safeThis->repaint();
+    juce::Component::SafePointer<juce::Component> safeTarget(target);
+    showParamLockMenu(owner, *target, paramId, [safeThis, safeTarget] {
+        if(safeTarget != nullptr) safeTarget->repaint();
+        if(safeThis != nullptr) safeThis->repaint();
     });
 }

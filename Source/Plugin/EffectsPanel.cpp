@@ -76,8 +76,14 @@ EffectsPanel::EffectsPanel(DuckerProcessor& p) : owner(p) {
     switches[1].setTooltip("Enable or bypass the delay stage. Turn on FX to use it.");
     switches[2].setTooltip("Enable or bypass the reverb stage. Turn on FX to use it.");
     choices[0].onChange = [this] { refresh(); };
+    knobs[8].onValueChange = [this] { refresh(); };
     knobs[9].onValueChange = [this] { refresh(); };
     refresh();
+}
+
+void EffectsPanel::lookAndFeelChanged() {
+    for(auto& knob : knobs)
+        knob.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 68, 18);
 }
 
 void EffectsPanel::refresh() {
@@ -87,8 +93,10 @@ void EffectsPanel::refresh() {
     for(auto& button : switches) button.setTitle(button.getButtonText());
     // Controls that have no effect draw dimmed and stay editable. Output always applies.
     const bool fxOn = switches[0].getToggleState();
-    const std::array<bool, 6> choiceActive {fxOn, fxOn && choices[0].getSelectedId() != 1, fxOn && switches[1].getToggleState(),
-        fxOn && switches[2].getToggleState(), fxOn, fxOn && knobs[9].getValue() > 0};
+    const bool delayOn = switches[1].getToggleState();
+    const bool reverbOn = switches[2].getToggleState();
+    const std::array<bool, 6> choiceActive {fxOn, fxOn && choices[0].getSelectedId() != 1, fxOn && delayOn,
+        fxOn && reverbOn, fxOn && delayOn && reverbOn, fxOn && knobs[9].getValue() > 0};
     for(size_t i = 0; i < choices.size(); ++i) choices[i].setAlpha(choiceActive[i] ? 1.0f : look::inactiveAlpha);
     for(size_t i = 0; i < knobs.size(); ++i) {
         const bool active = i == 11 || (fxOn && (i >= 8 || switches[i < 4 ? 1 : 2].getToggleState()));
@@ -179,5 +187,4 @@ void EffectsPanel::paint(juce::Graphics& g) {
     g.setColour(look::muted);
     g.setFont(juce::FontOptions(11.0f * s));
     g.drawText(peak > 0.001f ? juce::String(db, 1) + " dBFS" : "Silent", juce::Rectangle<float>(794 * s, 16 * s, 96 * s, 18 * s), juce::Justification::centredLeft);
-    g.drawText("v" JucePlugin_VersionString, juce::Rectangle<float>(890 * s, 16 * s, 72 * s, 18 * s), juce::Justification::centredRight);
 }

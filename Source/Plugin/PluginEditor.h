@@ -30,27 +30,30 @@ private:
 
 class DuckLookAndFeel final : public juce::LookAndFeel_V4 {
 public:
-    DuckLookAndFeel();
+    explicit DuckLookAndFeel(DuckerProcessor&);
     void drawRotarySlider(juce::Graphics&, int, int, int, int, float, float, float, juce::Slider&) override;
     void drawLinearSlider(juce::Graphics&, int, int, int, int, float, float, float, juce::Slider::SliderStyle, juce::Slider&) override;
     void drawButtonBackground(juce::Graphics&, juce::Button&, const juce::Colour&, bool, bool) override;
     void drawButtonText(juce::Graphics&, juce::TextButton&, bool, bool) override;
     void drawComboBox(juce::Graphics&, int, int, bool, int, int, int, int, juce::ComboBox&) override;
     juce::Label* createSliderTextBox(juce::Slider&) override;
+    juce::Slider::SliderLayout getSliderLayout(juce::Slider&) override;
+private:
+    DuckerProcessor& owner;
 };
 
-class GlyphButton final : public juce::Button {
+class GlyphButton final : public LockableControl<juce::Button> {
 public:
     enum class Glyph { Loop, Menu, Headphones, Previous, Next, PreviousBank, NextBank };
-    explicit GlyphButton(Glyph g) : juce::Button({}), glyph(g) {}
+    explicit GlyphButton(Glyph g) : LockableControl<juce::Button>(juce::String()), glyph(g) {}
     void paintButton(juce::Graphics&, bool over, bool down) override;
 private:
     Glyph glyph;
 };
 
-class CurveButton final : public juce::Button {
+class CurveButton final : public LockableControl<juce::Button> {
 public:
-    explicit CurveButton(int index) : juce::Button(duck::curveNames[static_cast<size_t>(index)]), curve(index) {}
+    explicit CurveButton(int index) : LockableControl<juce::Button>(duck::curveNames[static_cast<size_t>(index)]), curve(index) {}
     void paintButton(juce::Graphics&, bool over, bool down) override;
 private:
     int curve;
@@ -74,11 +77,13 @@ private:
     float lengthFraction() const;
     float shiftFraction() const;
     float handleX() const;
+    juce::Rectangle<float> handleBounds() const;
     bool overHandle(juce::Point<float>) const;
     void setLength(float fraction);
-    void setLengthFromPointer(float x);
+    void setLengthFromDrag(float x);
     DuckerProcessor& owner;
     bool dragging = false;
+    float dragStartX = 0.0f, dragStartLength = 1.0f;
     int seenTriggers = 0, flashFrames = 0, holdFrames = 0;
     float detectorLevel = 0, detectorHold = 0;
     bool clipped = false;
@@ -108,12 +113,12 @@ private:
     juce::TextButton effectsToggle;
     juce::TextButton pushItButton {"Audition"};
     bool effectsExpanded = true;
-    juce::Slider mix, band, shift, slope, threshold, lookahead, smoothing, detectorHpf, detectorLpf, tension, floor;
-    juce::ComboBox bandSlope;
-    juce::TextButton detectorMonitorButton {"Listen"};
-    std::array<juce::TextButton, 4> rateButtons;
-    std::array<juce::TextButton, 3> triggerButtons;
-    juce::TextButton bandButton;
+    LockableControl<juce::Slider> mix, band, shift, slope, threshold, lookahead, smoothing, detectorHpf, detectorLpf, tension, floor;
+    LockableControl<juce::ComboBox> bandSlope;
+    LockableControl<juce::TextButton> detectorMonitorButton {"Listen"};
+    std::array<LockableControl<juce::TextButton>, 4> rateButtons;
+    std::array<LockableControl<juce::TextButton>, 3> triggerButtons;
+    LockableControl<juce::TextButton> bandButton;
     GlyphButton retrigger {GlyphButton::Glyph::Loop}, menu {GlyphButton::Glyph::Menu}, solo {GlyphButton::Glyph::Headphones},
         previous {GlyphButton::Glyph::Previous}, next {GlyphButton::Glyph::Next},
         previousBank {GlyphButton::Glyph::PreviousBank}, nextBank {GlyphButton::Glyph::NextBank};

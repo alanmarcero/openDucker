@@ -18,10 +18,16 @@ public:
         search.setComponentID("presetSearch");
         search.setTextToShowWhenEmpty("Search presets", palette.muted);
         search.onTextChange = [this] { clearConfirm(); rebuild(); };
+        search.onEscapeKey = [this] {
+            clearConfirm();
+            if(search.getText().isNotEmpty()) search.setText({}, juce::sendNotification);
+        };
         style(search);
         name.setComponentID("presetName");
         name.setTextToShowWhenEmpty("Preset name", palette.muted);
         name.onTextChange = [this] { if(confirmingAction == ConfirmAction::Replace) clearConfirm(); };
+        name.onReturnKey = [this] { saveCurrent(); };
+        name.onEscapeKey = [this] { clearConfirm(); };
         style(name);
         save.setButtonText("Save"); save.setTitle("Save"); save.setComponentID("presetSave");
         renameButton.setButtonText("Rename"); renameButton.setTitle("Rename"); renameButton.setComponentID("presetRename");
@@ -35,9 +41,24 @@ public:
         viewport.setScrollBarsShown(true, false);
         error.setColour(juce::Label::textColourId, juce::Colour {0xffff8d7a});
         error.setJustificationType(juce::Justification::centredLeft);
+        syncSelectionFromActive();
         rebuild();
     }
     ~PresetBrowser() override { stopTimer(); setLookAndFeel(nullptr); }
+
+    bool keyPressed(const juce::KeyPress& key) override {
+        if(key == juce::KeyPress::escapeKey) {
+            if(confirmingAction != ConfirmAction::None) { clearConfirm(); return true; }
+            if(search.getText().isNotEmpty()) { search.setText({}, juce::sendNotification); return true; }
+        }
+        return false;
+    }
+
+    void disarm() {
+        clearConfirm();
+        syncSelectionFromActive();
+        rebuild();
+    }
 
     void paint(juce::Graphics& g) override { g.fillAll(palette.background); }
 
@@ -149,6 +170,13 @@ private:
         rebuild();
     }
 
+    void syncSelectionFromActive() {
+        selected = host.presets().activeKey();
+        const auto active = host.presets().find(selected);
+        selectedFactory = !active || active->factory;
+        name.setText(active && !active->factory ? active->name : juce::String(), juce::dontSendNotification);
+    }
+
     void deleteCurrent() {
         if(selected.isEmpty() || selectedFactory) return;
         if(confirmingAction != ConfirmAction::Delete) {
@@ -164,8 +192,10 @@ private:
         if(!host.deletePreset(selected, message)) error.setText(message, juce::dontSendNotification);
         else {
             error.setText({}, juce::dontSendNotification);
-            selected.clear();
-            selectedFactory = true;
+            name.setText({}, juce::dontSendNotification);
+            selected = host.presets().activeKey();
+            const auto active = host.presets().find(selected);
+            selectedFactory = !active || active->factory;
         }
         if(changed) changed();
         rebuild();
@@ -208,15 +238,16 @@ SuiteBar::SuiteBar(SuiteHost& hostIn, Palette paletteIn) : host(hostIn), palette
             // With no active entry, Next picks the first preset and Previous the last.
             const int from = found == count && step > 0 ? -1 : found;
             host.loadPreset(entries[static_cast<size_t>((from + step + count) % count)].key);
+            if(onDisarmBrowser) onDisarmBrowser();
             refresh();
         };
     }
     undoButton.onClick = [this] { host.undoEdit(); refresh(); };
     redoButton.onClick = [this] { host.redoEdit(); refresh(); };
-    aButton.onClick = [this] { host.selectSlotA(); refresh(); };
-    bButton.onClick = [this] { host.selectSlotB(); refresh(); };
-    aToBButton.onClick = [this] { host.copyAToB(); refresh(); };
-    bToAButton.onClick = [this] { host.copyBToA(); refresh(); };
+    aButton.onClick = [this] { host.selectSlotA(); if(onDisarmBrowser) onDisarmBrowser(); refresh(); };
+    bButton.onClick = [this] { host.selectSlotB(); if(onDisarmBrowser) onDisarmBrowser(); refresh(); };
+    aToBButton.onClick = [this] { host.copyAToB(); if(onDisarmBrowser) onDisarmBrowser(); refresh(); };
+    bToAButton.onClick = [this] { host.copyBToA(); if(onDisarmBrowser) onDisarmBrowser(); refresh(); };
     presetButton.onClick = [this] { showBrowser(); };
     favoriteButton.onClick = [this] {
         const auto key = host.presets().activeKey();
@@ -276,6 +307,9 @@ std::unique_ptr<juce::Component> SuiteBar::createBrowser() {
     auto browser = std::make_unique<PresetBrowser>(host, palette, [this] { refresh(); });
     browser->setLookAndFeel(&getLookAndFeel());
     browser->setSize(320, 420);
+    onDisarmBrowser = [safe = juce::Component::SafePointer<PresetBrowser>(browser.get())] {
+        if(safe != nullptr) safe->disarm();
+    };
     return browser;
 }
 

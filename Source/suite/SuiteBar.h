@@ -23,6 +23,7 @@ private:
     void showBrowser();
     SuiteHost& host;
     Palette palette;
+    std::function<void()> onDisarmBrowser;
     juce::TextButton undoButton {"Undo"}, redoButton {"Redo"}, aButton {"A"}, bButton {"B"},
         aToBButton {"A>B"}, bToAButton {"B>A"}, presetButton {"Presets"}, favoriteButton {"Fav"},
         previousPresetButton {"<"}, nextPresetButton {">"};

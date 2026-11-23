@@ -133,7 +133,10 @@ bool PresetLibrary::deleteUser(const juce::String& key, juce::String& error) {
         favorites.removeString(key);
         storeFavorites();
     }
-    if(active == key) active = factory.empty() ? juce::String() : factoryKey(0);
+    if(active == key) {
+        active.clear();
+        edited = false;
+    }
     rescan();
     return true;
 }
