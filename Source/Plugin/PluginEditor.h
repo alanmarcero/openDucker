@@ -9,9 +9,9 @@ const juce::Colour background {0xff0d1317}, panel {0xff152026}, panelHover {0xff
     mint {0xff48f0c8}, brightMint {0xff80f5dc}, yellow {0xffffbe3b}, darkMint {0xff23483f},
     paper {0xffe6f0f5}, muted {0xffa2b5c0}, ink {0xff0d1317};
 // Bar text height as a share of the bar height, and the text inset at each end.
-constexpr float barTextScale = 0.36f, barPadding = 8.0f;
+constexpr float barTextScale = 0.37f, barPadding = 9.0f;
 // A control whose setting has no effect in the current state draws at this alpha.
-constexpr float inactiveAlpha = 0.4f;
+constexpr float inactiveAlpha = 0.45f;
 }
 
 inline void bindParamLock(juce::Component& control, const char* paramId) {

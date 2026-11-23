@@ -83,7 +83,7 @@ EffectsPanel::EffectsPanel(DuckerProcessor& p) : owner(p) {
 
 void EffectsPanel::lookAndFeelChanged() {
     for(auto& knob : knobs)
-        knob.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 68, 18);
+        knob.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 72, 20);
 }
 
 void EffectsPanel::refresh() {
@@ -117,23 +117,23 @@ void EffectsPanel::resized() {
     choices[1].setBounds(area(238, 2, 122, 40));
     choices[4].setBounds(area(412, 2, 110, 40));
 
-    switches[1].setBounds(area(12, 48, 96, 40));
-    choices[2].setBounds(area(190, 48, 110, 40));
-    switches[2].setBounds(area(337, 48, 102, 40));
-    choices[3].setBounds(area(515, 48, 110, 40));
-    choices[5].setBounds(area(840, 48, 110, 40));
+    switches[1].setBounds(area(12, 46, 96, 40));
+    choices[2].setBounds(area(190, 46, 110, 40));
+    switches[2].setBounds(area(337, 46, 102, 40));
+    choices[3].setBounds(area(515, 46, 110, 40));
+    choices[5].setBounds(area(840, 46, 110, 40));
 
     for(int i = 0; i < 4; ++i) {
-        knobs[static_cast<size_t>(i)].setBounds(area(4 + static_cast<float>(i) * 76, 88, 76, 104));
-        knobs[static_cast<size_t>(i + 4)].setBounds(area(329 + static_cast<float>(i) * 76, 88, 76, 104));
-        knobs[static_cast<size_t>(i + 8)].setBounds(area(654 + static_cast<float>(i) * 76, 88, 76, 104));
+        knobs[static_cast<size_t>(i)].setBounds(area(4 + static_cast<float>(i) * 76, 86, 76, 108));
+        knobs[static_cast<size_t>(i + 4)].setBounds(area(329 + static_cast<float>(i) * 76, 86, 76, 108));
+        knobs[static_cast<size_t>(i + 8)].setBounds(area(654 + static_cast<float>(i) * 76, 86, 76, 108));
     }
 }
 
 void EffectsPanel::paint(juce::Graphics& g) {
     const float s = static_cast<float>(getWidth()) / 962.0f;
     for(const float cardX : {0.0f, 325.0f, 650.0f}) {
-        const juce::Rectangle<float> card {cardX * s, 42 * s, 312 * s, 152 * s};
+        const juce::Rectangle<float> card {cardX * s, 42 * s, 312 * s, 154 * s};
         g.setColour(look::panel.withAlpha(0.6f));
         g.fillRoundedRectangle(card, 8 * s);
         g.setColour(look::muted.withAlpha(0.2f));
@@ -141,50 +141,74 @@ void EffectsPanel::paint(juce::Graphics& g) {
     }
     g.setColour(look::muted);
     g.setFont(juce::FontOptions(11.5f * s, juce::Font::bold));
-    g.drawText("DUCK", juce::Rectangle<float>(92 * s, 4 * s, 42 * s, 28 * s), juce::Justification::centred);
-    g.drawText("FLOW", juce::Rectangle<float>(366 * s, 4 * s, 42 * s, 28 * s), juce::Justification::centred);
+    g.drawText("DUCK", juce::Rectangle<float>(92 * s, 2 * s, 42 * s, 40 * s), juce::Justification::centred);
+    g.drawText("FLOW", juce::Rectangle<float>(366 * s, 2 * s, 42 * s, 40 * s), juce::Justification::centred);
 
-    const bool enabled = switches[0].getToggleState()
+    const bool fxOn = switches[0].getToggleState();
+    const bool enabled = fxOn
         && (switches[1].getToggleState() || switches[2].getToggleState() || knobs[8].getValue() > 0 || knobs[9].getValue() > 0);
     const int target = choices[0].getSelectedId();
     const bool bypassed = owner.parameters.getRawParameterValue("bypass")->load() > 0.5f;
     const juce::String dry = bypassed ? "clean" : !enabled || target != 2 ? "ducked" : "clean";
     const juce::String wet = bypassed ? "bypassed" : !enabled ? "off" : target == 1 ? "clean" : choices[1].getSelectedId() == 1 ? "ducked input" : "ducked output";
-    g.setFont(juce::FontOptions(11.5f * s));
-    g.drawText("Dry: " + dry + "   /   FX: " + wet, juce::Rectangle<float>(534 * s, 4 * s, 248 * s, 28 * s), juce::Justification::centredLeft);
+    g.setColour(look::paper.withAlpha(0.88f));
+    g.setFont(juce::FontOptions(12.5f * s));
+    g.drawText("Dry: " + dry + "   /   FX: " + wet, juce::Rectangle<float>(532 * s, 2 * s, 252 * s, 40 * s), juce::Justification::centredLeft);
 
     // Stage Status LEDs & Badges
     const bool delayOn = enabled && switches[1].getToggleState();
     g.setColour(delayOn ? look::mint : look::muted.withAlpha(0.35f));
-    g.fillEllipse(114 * s, 59.5f * s, 7 * s, 7 * s);
-    g.setFont(juce::FontOptions(10.5f * s, juce::Font::bold));
-    g.setColour(delayOn ? look::mint.withAlpha(0.9f) : look::muted.withAlpha(0.5f));
-    g.drawText("DELAY", juce::Rectangle<float>(125 * s, 50 * s, 62 * s, 26 * s), juce::Justification::centredLeft);
+    g.fillEllipse(114 * s, 62.5f * s, 7 * s, 7 * s);
+    g.setFont(juce::FontOptions(11.0f * s, juce::Font::bold));
+    g.setColour(delayOn ? look::mint.withAlpha(0.9f) : look::muted.withAlpha(0.6f));
+    g.drawText("DELAY", juce::Rectangle<float>(125 * s, 46 * s, 62 * s, 40 * s), juce::Justification::centredLeft);
 
     const bool reverbOn = enabled && switches[2].getToggleState();
     g.setColour(reverbOn ? look::yellow : look::muted.withAlpha(0.35f));
-    g.fillEllipse(444 * s, 59.5f * s, 7 * s, 7 * s);
-    g.setColour(reverbOn ? look::yellow.withAlpha(0.9f) : look::muted.withAlpha(0.5f));
-    g.drawText("REVERB", juce::Rectangle<float>(455 * s, 50 * s, 58 * s, 26 * s), juce::Justification::centredLeft);
+    g.fillEllipse(444 * s, 62.5f * s, 7 * s, 7 * s);
+    g.setColour(reverbOn ? look::yellow.withAlpha(0.9f) : look::muted.withAlpha(0.6f));
+    g.drawText("REVERB", juce::Rectangle<float>(455 * s, 46 * s, 58 * s, 40 * s), juce::Justification::centredLeft);
 
     const float activity = owner.destroyLevel.load(std::memory_order_relaxed);
-    g.setColour(activity > 0.01f ? look::yellow : look::muted.withAlpha(0.35f));
-    g.fillEllipse(664 * s, 59.5f * s, 7 * s, 7 * s);
     const bool armed = enabled && knobs[9].getValue() > 0;
-    const juce::String destroyText = activity > 0.01f
+    const bool destroyLit = activity > 0.01f;
+    const juce::String destroyText = destroyLit
         ? (choices[5].getSelectedId() == 2 ? "Destroy active" : "Destroying tail")
         : (armed ? "Tail armed" : "Destroy off");
-    g.setColour(look::muted);
-    g.drawText(destroyText, juce::Rectangle<float>(678 * s, 50 * s, 154 * s, 26 * s), juce::Justification::centredLeft);
+    const juce::Rectangle<float> destroyPill {662 * s, 46 * s, 128 * s, 40 * s};
+    {
+        const juce::Graphics::ScopedSaveState pillState(g);
+        if(!fxOn) g.beginTransparencyLayer(look::inactiveAlpha);
+        const float corner = destroyPill.getHeight() * 0.45f;
+        g.setColour(destroyLit ? look::yellow : look::panel);
+        g.fillRoundedRectangle(destroyPill, corner);
+        if(!destroyLit) {
+            g.setColour(look::muted.withAlpha(0.25f));
+            g.drawRoundedRectangle(destroyPill, corner, 1.0f);
+        }
+        g.setColour(destroyLit ? look::ink : (armed ? look::mint : look::muted.withAlpha(0.55f)));
+        g.fillEllipse(destroyPill.getX() + 12 * s, destroyPill.getCentreY() - 3.5f * s, 7 * s, 7 * s);
+        g.setColour(destroyLit ? look::ink : look::paper);
+        g.setFont(juce::FontOptions(12.0f * s, juce::Font::bold));
+        g.drawText(destroyText, destroyPill.withTrimmedLeft(24 * s).withTrimmedRight(8 * s), juce::Justification::centredLeft);
+        if(!fxOn) g.endTransparencyLayer();
+    }
 
     const float peak = owner.outputPeak.load(std::memory_order_relaxed);
     const float db = peak > 0 ? 20 * std::log10(peak) : -60;
     const float meter = juce::jlimit(0.0f, 1.0f, (db + 60) / 60);
+    const juce::Rectangle<float> meterRect {794 * s, 6 * s, 168 * s, 10 * s};
     g.setColour(look::panel);
-    g.fillRoundedRectangle(794 * s, 7 * s, 168 * s, 6 * s, 3 * s);
+    g.fillRoundedRectangle(meterRect, 5 * s);
     g.setColour(peak > 1 ? look::yellow : look::mint);
-    g.fillRoundedRectangle(794 * s, 7 * s, 168 * s * meter, 6 * s, 3 * s);
-    g.setColour(look::muted);
-    g.setFont(juce::FontOptions(11.0f * s));
-    g.drawText(peak > 0.001f ? juce::String(db, 1) + " dBFS" : "Silent", juce::Rectangle<float>(794 * s, 16 * s, 96 * s, 18 * s), juce::Justification::centredLeft);
+    g.fillRoundedRectangle(meterRect.withWidth(meterRect.getWidth() * meter), 5 * s);
+    g.setColour(look::muted.withAlpha(0.32f));
+    g.drawRoundedRectangle(meterRect, 5 * s, 1.0f);
+    for(const float tickDb : {-12.0f, -6.0f}) {
+        const float tx = meterRect.getX() + meterRect.getWidth() * ((tickDb + 60.0f) / 60.0f);
+        g.drawVerticalLine(juce::roundToInt(tx), meterRect.getY() + 1.5f * s, meterRect.getBottom() - 1.5f * s);
+    }
+    g.setColour(peak > 1 ? look::yellow : look::paper);
+    g.setFont(juce::FontOptions(12.5f * s, juce::Font::bold));
+    g.drawText(peak > 0.001f ? juce::String(db, 1) + " dBFS" : "Silent", juce::Rectangle<float>(794 * s, 19 * s, 110 * s, 20 * s), juce::Justification::centredLeft);
 }

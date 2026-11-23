@@ -263,26 +263,31 @@ SuiteBar::SuiteBar(SuiteHost& hostIn, Palette paletteIn) : host(hostIn), palette
 }
 
 void SuiteBar::paint(juce::Graphics& g) {
+    const auto bounds = getLocalBounds().toFloat();
     g.setColour(palette.panel.withAlpha(0.85f));
-    g.fillRoundedRectangle(getLocalBounds().toFloat(), 6.0f);
+    g.fillRoundedRectangle(bounds, 6.0f);
+    g.setColour(palette.muted.withAlpha(0.2f));
+    for(const float dividerX : {136.0f, 342.0f})
+        g.drawVerticalLine(juce::roundToInt(dividerX), 8.0f, bounds.getHeight() - 8.0f);
 }
 
 void SuiteBar::resized() {
-    auto row = getLocalBounds();
-    const int gap = 4;
+    auto row = getLocalBounds().reduced(6, 2);
+    const int gap = 6;
+    const int groupGap = 14;
     const auto take = [&](int width) {
         auto bounds = row.removeFromLeft(width);
         row.removeFromLeft(gap);
         return bounds;
     };
-    undoButton.setBounds(take(64));
-    redoButton.setBounds(take(64));
-    row.removeFromLeft(gap);
-    aButton.setBounds(take(42));
-    bButton.setBounds(take(42));
-    aToBButton.setBounds(take(54));
-    bToAButton.setBounds(take(54));
-    row.removeFromLeft(gap);
+    undoButton.setBounds(take(58));
+    redoButton.setBounds(take(58));
+    row.removeFromLeft(groupGap - gap);
+    aButton.setBounds(take(40));
+    bButton.setBounds(take(40));
+    aToBButton.setBounds(take(50));
+    bToAButton.setBounds(take(50));
+    row.removeFromLeft(groupGap - gap);
     previousPresetButton.setBounds(take(40));
     favoriteButton.setBounds(row.removeFromRight(48));
     row.removeFromRight(gap);

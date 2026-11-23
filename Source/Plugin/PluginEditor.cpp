@@ -127,27 +127,27 @@ void DuckLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int widt
     const DisabledDimmer dimmer(g, slider);
     if(slider.getComponentID() != "mix") {
         const float s = static_cast<float>(height) / 104.0f;
-        const juce::Point<float> centre {static_cast<float>(x) + static_cast<float>(width) * 0.5f, static_cast<float>(y) + 28.0f * s};
-        const float radius = 21.5f * s;
+        const juce::Point<float> centre {static_cast<float>(x) + static_cast<float>(width) * 0.5f, static_cast<float>(y) + 28.5f * s};
+        const float radius = 23.0f * s;
         const float angle = start + value * (end - start);
         const float origin = slider.getMinimum() < 0 ? start + (end - start) * static_cast<float>(slider.valueToProportionOfLength(0)) : start;
         juce::Path track, arc;
         track.addCentredArc(centre.x, centre.y, radius, radius, 0, start, end, true);
         arc.addCentredArc(centre.x, centre.y, radius, radius, 0, origin, angle, true);
         g.setColour(look::panel.darker(0.35f));
-        g.strokePath(track, juce::PathStrokeType(3.0f * s, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.strokePath(track, juce::PathStrokeType(3.2f * s, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
         g.setColour(look::mint);
-        g.strokePath(arc, juce::PathStrokeType(3.0f * s, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-        const juce::Rectangle<float> body {centre.x - 16.5f * s, centre.y - 16.5f * s, 33.0f * s, 33.0f * s};
+        g.strokePath(arc, juce::PathStrokeType(3.2f * s, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        const juce::Rectangle<float> body {centre.x - 18.0f * s, centre.y - 18.0f * s, 36.0f * s, 36.0f * s};
         g.setGradientFill(juce::ColourGradient(look::panel.brighter(0.25f), body.getTopLeft(), look::background.darker(0.3f), body.getBottomRight(), false));
         g.fillEllipse(body);
-        g.setColour(look::muted.withAlpha(0.3f));
+        g.setColour(look::muted.withAlpha(0.35f));
         g.drawEllipse(body, 1.0f);
         const auto direction = juce::Point<float>(std::sin(angle), -std::cos(angle));
         g.setColour(look::yellow);
-        g.drawLine({centre + direction * (9.5f * s), centre + direction * (15.5f * s)}, 2.0f * s);
-        drawText(g, slider.getTextFromValue(slider.getValue()), {static_cast<float>(x), static_cast<float>(y) + 55.0f * s, static_cast<float>(width), 19.0f * s}, 12.5f * s, look::paper, juce::Justification::centred, true);
-        drawText(g, slider.getName(), {static_cast<float>(x), static_cast<float>(y) + 75.0f * s, static_cast<float>(width), 17.0f * s}, 11.5f * s, look::muted, juce::Justification::centred, false);
+        g.drawLine({centre + direction * (10.0f * s), centre + direction * (16.5f * s)}, 2.2f * s);
+        drawText(g, slider.getTextFromValue(slider.getValue()), {static_cast<float>(x), static_cast<float>(y) + 56.0f * s, static_cast<float>(width), 20.0f * s}, 13.5f * s, look::paper, juce::Justification::centred, true);
+        drawText(g, slider.getName(), {static_cast<float>(x), static_cast<float>(y) + 77.0f * s, static_cast<float>(width), 18.0f * s}, 12.0f * s, look::muted.brighter(0.18f), juce::Justification::centred, false);
         return;
     }
 
@@ -212,17 +212,29 @@ void DuckLookAndFeel::drawLinearSlider(juce::Graphics& g, int x, int y, int widt
     const float origin = bipolar ? zero : left;
     const bool suppressFill = slider.getComponentID() == "detectorLpf" && slider.getValue() < 1.0;
     if(!suppressFill) {
-        g.setColour(look::mint.withAlpha(0.22f));
-        g.fillRoundedRectangle(juce::Rectangle<float>::leftTopRightBottom(std::min(origin, position), bounds.getY(), std::max(origin, position), bounds.getBottom()), 4);
+        const auto fillBounds = juce::Rectangle<float>::leftTopRightBottom(
+            std::min(origin, position), bounds.getY(), std::max(origin, position), bounds.getBottom());
+        const juce::Graphics::ScopedSaveState clipState(g);
+        juce::Path clipPath;
+        clipPath.addRoundedRectangle(bounds, 4);
+        g.reduceClipRegion(clipPath);
+        g.setColour(look::mint.withAlpha(0.14f));
+        g.fillRect(fillBounds);
+        g.setColour(look::mint.withAlpha(0.55f));
+        g.fillRect(fillBounds.withTop(bounds.getBottom() - 2.5f));
     }
-    g.setColour(look::muted.withAlpha(0.3f));
+    g.setColour(look::muted.withAlpha(0.46f));
     g.drawRoundedRectangle(bounds, 4, 1);
     const auto text = bounds.reduced(look::barPadding, 0);
     const auto lockId = slider.getProperties()["paramLockId"].toString();
     const bool locked = lockId.isNotEmpty() && owner.isParamLocked(lockId);
+    const auto valueBounds = text.withTrimmedRight(locked ? 14.0f : 0.0f);
     const float size = bounds.getHeight() * look::barTextScale;
+    const auto valueText = slider.getTextFromValue(slider.getValue());
+    drawText(g, slider.getName(), text.translated(0.0f, 1.0f), size, look::ink.withAlpha(0.85f), juce::Justification::centredLeft, true);
+    drawText(g, valueText, valueBounds.translated(0.0f, 1.0f), size, look::ink.withAlpha(0.85f), juce::Justification::centredRight, true);
     drawText(g, slider.getName(), text, size, look::paper, juce::Justification::centredLeft, true);
-    drawText(g, slider.getTextFromValue(slider.getValue()), text.withTrimmedRight(locked ? 14.0f : 0.0f), size, look::paper, juce::Justification::centredRight, true);
+    drawText(g, valueText, valueBounds, size, look::paper, juce::Justification::centredRight, true);
 }
 
 void DuckLookAndFeel::drawButtonBackground(juce::Graphics& g, juce::Button& button, const juce::Colour&, bool over, bool down) {
@@ -272,7 +284,7 @@ juce::Slider::SliderLayout DuckLookAndFeel::getSliderLayout(juce::Slider& slider
         layout.textBoxBounds = juce::Rectangle<float>(0.0f, h - labelHeight - 4.0f, w, labelHeight * 0.65f).toNearestInt();
     } else {
         const float s = h / 104.0f;
-        layout.textBoxBounds = juce::Rectangle<float>(0.0f, 55.0f * s, w, 19.0f * s).toNearestInt();
+        layout.textBoxBounds = juce::Rectangle<float>(0.0f, 56.0f * s, w, 20.0f * s).toNearestInt();
     }
     return layout;
 }
@@ -282,11 +294,11 @@ void GlyphButton::paintButton(juce::Graphics& g, bool over, bool down) {
     const auto bounds = getLocalBounds().toFloat();
     const bool arrow = glyph == Glyph::Previous || glyph == Glyph::Next || glyph == Glyph::PreviousBank || glyph == Glyph::NextBank;
     const bool lit = getToggleState() && !arrow;
-    const auto colour = lit ? look::ink : (over || down ? look::paper : look::muted);
+    const auto colour = lit ? look::ink : look::paper.withAlpha(over || down ? 1.0f : 0.85f);
     if(arrow) {
         g.setColour(over || down ? look::panelHover : look::panel);
         g.fillRoundedRectangle(bounds, 4);
-        g.setColour(look::muted.withAlpha(0.25f));
+        g.setColour(look::muted.withAlpha(0.32f));
         g.drawRoundedRectangle(bounds, 4, 1);
     } else if(lit) {
         g.setColour(look::yellow);
@@ -294,7 +306,7 @@ void GlyphButton::paintButton(juce::Graphics& g, bool over, bool down) {
     } else {
         g.setColour(over || down ? look::panelHover : look::panel);
         g.fillRoundedRectangle(bounds, bounds.getHeight() * 0.45f);
-        g.setColour(look::muted.withAlpha(0.25f));
+        g.setColour(look::muted.withAlpha(0.42f));
         g.drawRoundedRectangle(bounds, bounds.getHeight() * 0.45f, 1);
     }
     const auto centre = bounds.getCentre();
@@ -531,11 +543,14 @@ void CurveDisplay::paint(juce::Graphics& g) {
     g.setColour(look::yellow);
     g.strokePath(path, juce::PathStrokeType(3.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
-    // Live playhead cursor
-    g.setColour(look::muted.withAlpha(0.85f));
-    g.setFont(juce::FontOptions(11.0f));
-    g.drawText(owner.sourceIsSidechain.load(std::memory_order_relaxed) ? "Sidechain" : "Input",
-        juce::Rectangle<float>(8.0f, height - 18.0f, 90.0f, 14.0f), juce::Justification::centredLeft);
+    // Source label with subtle scrim so it stays clear of the waveform baseline.
+    const juce::String sourceLabel = owner.sourceIsSidechain.load(std::memory_order_relaxed) ? "Sidechain" : "Input";
+    const juce::Font sourceFont(juce::FontOptions(12.5f, juce::Font::bold));
+    const float labelW = static_cast<float>(juce::GlyphArrangement::getStringWidthInt(sourceFont, sourceLabel)) + 12.0f;
+    const juce::Rectangle<float> labelBox {10.0f, height - 25.0f, labelW, 18.0f};
+    g.setColour(look::display.withAlpha(0.78f));
+    g.fillRoundedRectangle(labelBox, 4.0f);
+    drawText(g, sourceLabel, labelBox, 12.5f, look::paper.withAlpha(0.92f), juce::Justification::centred, true);
 
     if(owner.visualRunning.load(std::memory_order_relaxed)) {
         const float playheadX = owner.visualBeat.load(std::memory_order_relaxed) * width;
@@ -821,8 +836,8 @@ void DuckerEditor::refreshActivity() {
     const bool detectorHeard = mode == 2 || detectorMonitorButton.getToggleState();
     threshold.setAlpha(mode == 2 ? 1.0f : look::inactiveAlpha);
     retrigger.setAlpha(mode != 0 ? 1.0f : look::inactiveAlpha);
-    detectorHpf.setAlpha(detectorHeard ? 1.0f : look::inactiveAlpha);
-    detectorLpf.setAlpha(detectorHeard ? 1.0f : look::inactiveAlpha);
+    detectorHpf.setAlpha(detectorHeard ? 1.0f : 0.48f);
+    detectorLpf.setAlpha(detectorHeard ? 1.0f : 0.48f);
     for(auto* control : std::initializer_list<juce::Component*> {&band, &solo, &bandSlope})
         control->setAlpha(bandButton.getToggleState() ? 1.0f : look::inactiveAlpha);
 }
@@ -842,7 +857,7 @@ void DuckerEditor::resized() {
     const auto area = [](float x, float y, float w, float h) {
         return juce::Rectangle<float>(x, y + contentShift, w, h).toNearestInt();
     };
-    suiteBar.setBounds(12, 4, 976, 40);
+    suiteBar.setBounds(12, 4, 976, 44);
 
     // Left column: Mix, the low-band group, then Audition and Hide FX.
     mix.setBounds(area(70, 244, 204, 154));
@@ -862,12 +877,12 @@ void DuckerEditor::resized() {
     display.setBounds(area(354, 54, 630, 252));
 
     previousBank.setBounds(area(354, 312, 40, 40));
-    previous.setBounds(area(398, 312, 40, 40));
-    shift.setBounds(area(442, 312, 100, 40));
-    slope.setBounds(area(546, 312, 106, 40));
-    tension.setBounds(area(656, 312, 133, 40));
+    previous.setBounds(area(397, 312, 40, 40));
+    shift.setBounds(area(443, 312, 100, 40));
+    slope.setBounds(area(547, 312, 106, 40));
+    tension.setBounds(area(657, 312, 132, 40));
     floor.setBounds(area(793, 312, 103, 40));
-    next.setBounds(area(900, 312, 40, 40));
+    next.setBounds(area(902, 312, 40, 40));
     nextBank.setBounds(area(944, 312, 40, 40));
 
     for(size_t i = 0; i < curveButtons.size(); ++i)
@@ -1035,8 +1050,8 @@ void ParamLockOverlay::paintLocksIn(juce::Graphics& g, juce::Component& parent) 
                             radius = std::min(knobArea.getWidth(), knobArea.getHeight()) * 0.46f;
                         } else {
                             const float s = bounds.getHeight() / 104.0f;
-                            centre = {bounds.getCentreX(), bounds.getY() + 28.0f * s};
-                            radius = 21.5f * s;
+                            centre = {bounds.getCentreX(), bounds.getY() + 28.5f * s};
+                            radius = 23.0f * s;
                         }
                         badge = juce::Rectangle<float>(badgeW, badgeH)
                             .withCentre(centre + juce::Point<float>(radius * 0.85f, -radius * 0.85f));
