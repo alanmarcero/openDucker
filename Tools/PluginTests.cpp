@@ -563,7 +563,7 @@ void testEffectsControls(DuckerProcessor& p, juce::AudioProcessorEditor& editor)
     }
     auto* target = dynamic_cast<juce::ComboBox*>(find(editor, "duckTarget"));
     auto* position = find(editor, "duckPosition"); set(p, "fxEnabled", 1); target->setSelectedId(1, juce::sendNotificationSync);
-    require(position->isEnabled() && position->getAlpha() < 0.5f, "Dry-only does not dim the position switch, or locks it");
+    require(position->isEnabled() && position->getAlpha() < 0.65f, "Dry-only does not dim the position switch, or locks it");
     target->setSelectedId(3, juce::sendNotificationSync); require(position->getAlpha() > 0.99f, "Both does not restore the position switch");
     for(const auto* id : {"fxEnabled", "delayEnabled", "reverbEnabled"}) {
         auto* button = dynamic_cast<juce::TextButton*>(find(editor, id)); require(button != nullptr, "Effects switch missing");
@@ -571,24 +571,24 @@ void testEffectsControls(DuckerProcessor& p, juce::AudioProcessorEditor& editor)
         button->setToggleState(true, juce::sendNotificationSync); require(p.parameters.getRawParameterValue(id)->load() > 0.5f, "Effect cannot turn on");
     }
     auto* toggle = dynamic_cast<juce::TextButton*>(find(editor, "effectsToggle")); require(toggle != nullptr, "Effects collapse missing");
-    toggle->onClick(); require(editor.getHeight() == 596 && !find(editor, "reverbType")->isShowing(), "Effects panel does not collapse");
+    toggle->onClick(); require(editor.getHeight() == 608 && !find(editor, "reverbType")->isShowing(), "Effects panel does not collapse");
     require(p.parameters.getRawParameterValue("fxEnabled")->load() > 0.5f, "Collapsing panel disables audio");
-    toggle->onClick(); require(editor.getHeight() == 804, "Effects panel does not expand");
+    toggle->onClick(); require(editor.getHeight() == 816, "Effects panel does not expand");
     set(p, "fxEnabled", 0);
-    require(find(editor, "delayEnabled")->getAlpha() < 0.5f && find(editor, "delayFeedback")->getAlpha() < 0.5f && find(editor, "delayFeedback")->isEnabled()
+    require(find(editor, "delayEnabled")->getAlpha() < 0.65f && find(editor, "delayFeedback")->getAlpha() < 0.65f && find(editor, "delayFeedback")->isEnabled()
         && find(editor, "output")->getAlpha() > 0.99f, "FX off leaves the rack bright, locks it, or dims Output");
     set(p, "fxEnabled", 1);
     set(p, "trigger", 0); set(p, "bandOn", 0); set(p, "detectorMonitor", 0);
-    require(find(editor, "threshold")->getAlpha() < 0.5f && find(editor, "threshold")->isEnabled() && find(editor, "retrigger")->getAlpha() < 0.5f
-        && find(editor, "detectorHpf")->getAlpha() < 0.5f && find(editor, "bandFrequency")->getAlpha() < 0.5f, "Ignored controls look live or are locked");
+    require(find(editor, "threshold")->getAlpha() < 0.65f && find(editor, "threshold")->isEnabled() && find(editor, "retrigger")->getAlpha() < 0.65f
+        && find(editor, "detectorHpf")->getAlpha() < 0.65f && find(editor, "bandFrequency")->getAlpha() < 0.65f, "Ignored controls look live or are locked");
     set(p, "trigger", 2); set(p, "bandOn", 1);
     require(find(editor, "threshold")->getAlpha() > 0.99f && find(editor, "retrigger")->getAlpha() > 0.99f && find(editor, "detectorHpf")->getAlpha() > 0.99f
         && find(editor, "bandFrequency")->getAlpha() > 0.99f, "Live controls stay dimmed");
     set(p, "trigger", 0);
-    require(find(editor, "threshold")->getAlpha() < 0.5f && find(editor, "retrigger")->getAlpha() < 0.5f,
+    require(find(editor, "threshold")->getAlpha() < 0.65f && find(editor, "retrigger")->getAlpha() < 0.65f,
         "Switching trigger to Sync lags on dimming");
     set(p, "trigger", 1);
-    require(find(editor, "threshold")->getAlpha() < 0.5f && find(editor, "retrigger")->getAlpha() > 0.99f,
+    require(find(editor, "threshold")->getAlpha() < 0.65f && find(editor, "retrigger")->getAlpha() > 0.99f,
         "Switching trigger to MIDI lags on dimming");
     set(p, "trigger", 2);
     require(find(editor, "threshold")->getAlpha() > 0.99f && find(editor, "retrigger")->getAlpha() > 0.99f,
@@ -964,9 +964,9 @@ void testEditorRecall() {
     DuckerProcessor first;
     {
         std::unique_ptr<juce::AudioProcessorEditor> editor(first.createEditor());
-        editor->setSize(1300, 1045);
+        editor->setSize(1300, 1061);
         control<juce::TextButton>(*editor, "effectsToggle").onClick();
-        require(editor->getWidth() == 1300 && editor->getHeight() == 775, "Hiding FX does not keep the editor width");
+        require(editor->getWidth() == 1300 && editor->getHeight() == 790, "Hiding FX does not keep the editor width");
     }
     juce::MemoryBlock state;
     first.getStateInformation(state);
@@ -1111,7 +1111,7 @@ void testParamLocks() {
 
     {
         std::unique_ptr<juce::AudioProcessorEditor> ed(restored.createEditor());
-        ed->setSize(1000, 804);
+        ed->setSize(1000, 816);
         checkButtonLayout(*ed, 40);
         checkControlTitles(*ed);
         (void) ed->createComponentSnapshot(ed->getLocalBounds());
@@ -1146,7 +1146,7 @@ int main(int argc, char** argv) {
         Host host; host.position.setIsPlaying(true); host.position.setBpm(128); host.position.setPpqPosition(0);
         DuckerProcessor p; p.setPlayHead(&host); p.prepareToPlay(sampleRate, 512);
         std::unique_ptr<juce::AudioProcessorEditor> editor(p.createEditor());
-        editor->setSize(1000, 804);
+        editor->setSize(1000, 816);
         juce::AudioBuffer<float> clockAudio(2, 256);
         juce::MidiBuffer clockMidi;
         clockAudio.clear();
@@ -1182,7 +1182,7 @@ int main(int argc, char** argv) {
         checkControlTitles(*editor);
         editor->setSize(800, 643);
         checkButtonLayout(*editor, 32);
-        editor->setSize(1000, 804);
+        editor->setSize(1000, 816);
         testControls(p, *editor);
         testEffectsControls(p, *editor);
         testEqDetents(p, *editor);

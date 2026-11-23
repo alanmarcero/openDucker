@@ -117,9 +117,9 @@ void EffectsPanel::resized() {
     choices[1].setBounds(area(238, 2, 122, 40));
     choices[4].setBounds(area(412, 2, 110, 40));
 
-    switches[1].setBounds(area(12, 46, 96, 40));
+    switches[1].setBounds(area(12, 46, 112, 40));
     choices[2].setBounds(area(190, 46, 110, 40));
-    switches[2].setBounds(area(337, 46, 102, 40));
+    switches[2].setBounds(area(337, 46, 116, 40));
     choices[3].setBounds(area(515, 46, 110, 40));
     choices[5].setBounds(area(840, 46, 110, 40));
 
@@ -153,21 +153,7 @@ void EffectsPanel::paint(juce::Graphics& g) {
     const juce::String wet = bypassed ? "bypassed" : !enabled ? "off" : target == 1 ? "clean" : choices[1].getSelectedId() == 1 ? "ducked input" : "ducked output";
     g.setColour(look::paper.withAlpha(0.88f));
     g.setFont(juce::FontOptions(12.5f * s));
-    g.drawText("Dry: " + dry + "   /   FX: " + wet, juce::Rectangle<float>(532 * s, 2 * s, 252 * s, 40 * s), juce::Justification::centredLeft);
-
-    // Stage Status LEDs & Badges
-    const bool delayOn = enabled && switches[1].getToggleState();
-    g.setColour(delayOn ? look::mint : look::muted.withAlpha(0.35f));
-    g.fillEllipse(114 * s, 62.5f * s, 7 * s, 7 * s);
-    g.setFont(juce::FontOptions(11.0f * s, juce::Font::bold));
-    g.setColour(delayOn ? look::mint.withAlpha(0.9f) : look::muted.withAlpha(0.6f));
-    g.drawText("DELAY", juce::Rectangle<float>(125 * s, 46 * s, 62 * s, 40 * s), juce::Justification::centredLeft);
-
-    const bool reverbOn = enabled && switches[2].getToggleState();
-    g.setColour(reverbOn ? look::yellow : look::muted.withAlpha(0.35f));
-    g.fillEllipse(444 * s, 62.5f * s, 7 * s, 7 * s);
-    g.setColour(reverbOn ? look::yellow.withAlpha(0.9f) : look::muted.withAlpha(0.6f));
-    g.drawText("REVERB", juce::Rectangle<float>(455 * s, 46 * s, 58 * s, 40 * s), juce::Justification::centredLeft);
+    g.drawText("Dry: " + dry + " / FX: " + wet, juce::Rectangle<float>(532 * s, 2 * s, 252 * s, 40 * s), juce::Justification::centredLeft);
 
     const float activity = owner.destroyLevel.load(std::memory_order_relaxed);
     const bool armed = enabled && knobs[9].getValue() > 0;

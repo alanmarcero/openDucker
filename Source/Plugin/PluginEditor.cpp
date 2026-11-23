@@ -4,7 +4,7 @@
 
 namespace {
 constexpr float pi = juce::MathConstants<float>::pi;
-constexpr int contentShift = 44;
+constexpr int contentShift = 56;
 constexpr int collapsedHeight = 552 + contentShift;
 constexpr int expandedHeight = 760 + contentShift;
 constexpr int minimumWidth = 700, maximumWidth = 2000;
@@ -147,11 +147,11 @@ void DuckLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int widt
         g.setColour(look::yellow);
         g.drawLine({centre + direction * (10.0f * s), centre + direction * (16.5f * s)}, 2.2f * s);
         drawText(g, slider.getTextFromValue(slider.getValue()), {static_cast<float>(x), static_cast<float>(y) + 56.0f * s, static_cast<float>(width), 20.0f * s}, 13.5f * s, look::paper, juce::Justification::centred, true);
-        drawText(g, slider.getName(), {static_cast<float>(x), static_cast<float>(y) + 77.0f * s, static_cast<float>(width), 18.0f * s}, 12.0f * s, look::muted.brighter(0.18f), juce::Justification::centred, false);
+        drawText(g, slider.getName(), {static_cast<float>(x), static_cast<float>(y) + 77.0f * s, static_cast<float>(width), 18.0f * s}, 12.5f * s, look::muted.brighter(0.35f), juce::Justification::centred, false);
         return;
     }
 
-    const float labelHeight = static_cast<float>(height) * 0.16f;
+    const float labelHeight = static_cast<float>(height) * 0.18f;
     const auto knobArea = juce::Rectangle<float>(static_cast<float>(x), static_cast<float>(y), static_cast<float>(width), static_cast<float>(height) - labelHeight);
     const float diameter = std::min(knobArea.getWidth(), knobArea.getHeight());
     const auto bounds = juce::Rectangle<float>(diameter, diameter).withCentre(knobArea.getCentre()).reduced(diameter * 0.04f);
@@ -196,8 +196,8 @@ void DuckLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int widt
 
     // Label below
     const juce::String valText = slider.getTextFromValue(slider.getValue());
-    drawText(g, valText, {static_cast<float>(x), knobArea.getBottom() - 4, static_cast<float>(width), labelHeight * 0.65f}, labelHeight * 0.62f, look::paper, juce::Justification::centred, true);
-    drawText(g, slider.getName().toUpperCase(), {static_cast<float>(x), knobArea.getBottom() + labelHeight * 0.5f, static_cast<float>(width), labelHeight * 0.45f}, labelHeight * 0.42f, look::muted, juce::Justification::centred, false);
+    drawText(g, valText, {static_cast<float>(x), knobArea.getBottom() - 4, static_cast<float>(width), labelHeight * 0.58f}, labelHeight * 0.56f, look::paper, juce::Justification::centred, true);
+    drawText(g, slider.getName().toUpperCase(), {static_cast<float>(x), knobArea.getBottom() + labelHeight * 0.44f, static_cast<float>(width), labelHeight * 0.54f}, labelHeight * 0.46f, look::muted.brighter(0.28f), juce::Justification::centred, false);
 }
 
 void DuckLookAndFeel::drawLinearSlider(juce::Graphics& g, int x, int y, int width, int height, float position, float, float,
@@ -280,8 +280,8 @@ juce::Slider::SliderLayout DuckLookAndFeel::getSliderLayout(juce::Slider& slider
     layout.sliderBounds = local;
     const float w = static_cast<float>(local.getWidth()), h = static_cast<float>(local.getHeight());
     if(slider.getComponentID() == "mix") {
-        const float labelHeight = h * 0.16f;
-        layout.textBoxBounds = juce::Rectangle<float>(0.0f, h - labelHeight - 4.0f, w, labelHeight * 0.65f).toNearestInt();
+        const float labelHeight = h * 0.18f;
+        layout.textBoxBounds = juce::Rectangle<float>(0.0f, h - labelHeight - 4.0f, w, labelHeight * 0.58f).toNearestInt();
     } else {
         const float s = h / 104.0f;
         layout.textBoxBounds = juce::Rectangle<float>(0.0f, 56.0f * s, w, 20.0f * s).toNearestInt();
@@ -363,7 +363,7 @@ void CurveButton::paintButton(juce::Graphics& g, bool over, bool down) {
     const bool selected = getToggleState();
     g.setColour(selected ? look::yellow : (over || down ? look::panelHover : look::panel));
     g.fillRoundedRectangle(bounds, 5);
-    g.setColour(selected ? look::yellow.brighter(0.2f) : look::muted.withAlpha(0.2f));
+    g.setColour(selected ? look::yellow.brighter(0.2f) : look::muted.withAlpha(0.42f));
     g.drawRoundedRectangle(bounds, 5, 1);
     g.setColour(selected ? look::ink : look::paper.withAlpha(0.75f));
     g.strokePath(curvePath(curve, bounds.reduced(bounds.getWidth() * 0.18f, bounds.getHeight() * 0.22f), 36),
@@ -621,7 +621,7 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
     content.addAndMakeVisible(effectsToggle);
     content.addAndMakeVisible(pushItButton);
     pushItButton.setComponentID("pushIt");
-    pushItButton.setTitle("Audition");
+    pushItButton.setTitle("Test Impact");
     pushItButton.setTooltip("Play a short impact through the ducking curve and effects.");
     pushItButton.onClick = [this] { owner.triggerDemoImpact(); };
     pushItButton.setColour(juce::TextButton::buttonColourId, look::panel.brighter(0.12f));
@@ -676,8 +676,8 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
     bandSlope.setTooltip("Crossover filter steepness for Low band ducking. Turn on Low band to use it.");
     content.addAndMakeVisible(bandSlope);
     bandSlopeAttachment = std::make_unique<ComboBoxAttachment>(p.parameters, "bandSlope", bandSlope);
-    configureBar(detectorHpf, "detectorHpf", "Detector HPF", "High-pass filter on the audio-trigger detector. Off bypasses it. Select Audio or turn on Listen to use it.");
-    configureBar(detectorLpf, "detectorLpf", "Detector LPF", "Low-pass filter on the audio-trigger detector. Off, at the right end, bypasses it. Select Audio or turn on Listen to use it.");
+    configureBar(detectorHpf, "detectorHpf", "Detector HPF", "High-pass filter on the audio-trigger detector. Off bypasses it. Select Audio or turn on Listen Detector to use it.");
+    configureBar(detectorLpf, "detectorLpf", "Detector LPF", "Low-pass filter on the audio-trigger detector. Off, at the right end, bypasses it. Select Audio or turn on Listen Detector to use it.");
     // Off (0 Hz) sits at the right end, where a low-pass filter is fully open.
     // The last 1% of travel selects Off.
     const juce::NormalisableRange<double> cutoff {1.0, 20000.0, 1.0, 0.4};
@@ -699,7 +699,7 @@ DuckerEditor::DuckerEditor(DuckerProcessor& p) : AudioProcessorEditor(p), owner(
     detectorLpf.setDoubleClickReturnValue(true, 0);
     detectorMonitorButton.setComponentID("detectorMonitor");
     bindParamLock(detectorMonitorButton, "detectorMonitor");
-    detectorMonitorButton.setTitle("Listen");
+    detectorMonitorButton.setTitle("Listen Detector");
     detectorMonitorButton.setClickingTogglesState(true);
     detectorMonitorButton.setTooltip("Listen to the filtered detector input in place of the processed output.");
     detectorMonitorButton.onStateChange = [this] { refreshActivity(); };
@@ -836,8 +836,8 @@ void DuckerEditor::refreshActivity() {
     const bool detectorHeard = mode == 2 || detectorMonitorButton.getToggleState();
     threshold.setAlpha(mode == 2 ? 1.0f : look::inactiveAlpha);
     retrigger.setAlpha(mode != 0 ? 1.0f : look::inactiveAlpha);
-    detectorHpf.setAlpha(detectorHeard ? 1.0f : 0.48f);
-    detectorLpf.setAlpha(detectorHeard ? 1.0f : 0.48f);
+    detectorHpf.setAlpha(detectorHeard ? 1.0f : look::inactiveAlpha);
+    detectorLpf.setAlpha(detectorHeard ? 1.0f : look::inactiveAlpha);
     for(auto* control : std::initializer_list<juce::Component*> {&band, &solo, &bandSlope})
         control->setAlpha(bandButton.getToggleState() ? 1.0f : look::inactiveAlpha);
 }
@@ -969,8 +969,8 @@ void DuckerEditor::paint(juce::Graphics& g) {
     const float openWidth = static_cast<float>(juce::GlyphArrangement::getStringWidthInt(g.getCurrentFont(), "open"));
     drawText(g, "open", {24 * s, 10 * s + dy, openWidth + 4 * s, 26 * s}, 24 * s, look::paper, juce::Justification::centredLeft, true);
     drawText(g, "Ducker", {24 * s + openWidth + 1 * s, 10 * s + dy, 100 * s, 26 * s}, 24 * s, look::yellow, juce::Justification::centredLeft, true);
-    drawText(g, "v" JucePlugin_VersionString, {24 * s + openWidth + 92 * s, 14 * s + dy, 50 * s, 20 * s}, 11.5f * s, look::muted, juce::Justification::centredLeft, true);
-    drawText(g, "Find your bounce.", {25 * s, 35 * s + dy, 180 * s, 16 * s}, 12 * s, look::muted, juce::Justification::centredLeft, false);
+    drawText(g, "v" JucePlugin_VersionString, {24 * s + openWidth + 88 * s, 13 * s + dy, 52 * s, 20 * s}, 12.5f * s, look::muted.brighter(0.28f), juce::Justification::centredLeft, true);
+    drawText(g, "Find your bounce.", {25 * s, 34 * s + dy, 180 * s, 17 * s}, 13.0f * s, look::muted.brighter(0.25f), juce::Justification::centredLeft, false);
 
     // Host / Trigger Sync Status Pill
     const int state = owner.syncState.load(std::memory_order_relaxed);
@@ -979,18 +979,18 @@ void DuckerEditor::paint(juce::Graphics& g) {
     const juce::String status = mode == 1 ? "MIDI Trigger" : (mode == 2 ? "Audio Trigger"
         : (state == 2 ? juce::String(owner.hostBpm.load(std::memory_order_relaxed), 1) + " BPM" : (state == 1 ? "Host Stopped" : "No Sync")));
 
-    const auto statusPill = juce::Rectangle<float>(216 * s, 16 * s + dy, 116 * s, 22 * s);
+    const auto statusPill = juce::Rectangle<float>(214 * s, 13 * s + dy, 120 * s, 26 * s);
     g.setColour(look::panel.darker(0.2f));
     g.fillRoundedRectangle(statusPill, statusPill.getHeight() * 0.5f);
-    g.setColour(look::muted.withAlpha(0.2f));
+    g.setColour(look::muted.withAlpha(0.28f));
     g.drawRoundedRectangle(statusPill, statusPill.getHeight() * 0.5f, 1.0f);
 
     // Status LED dot
     g.setColour(ledOn ? look::mint : look::muted.withAlpha(0.5f));
-    g.fillEllipse(statusPill.getX() + 8 * s, statusPill.getCentreY() - 3.5f * s, 7 * s, 7 * s);
-    if(ledOn) glow(g, juce::Rectangle<float>(12 * s, 12 * s).withCentre({statusPill.getX() + 11.5f * s, statusPill.getCentreY()}), look::mint.withAlpha(0.4f));
+    g.fillEllipse(statusPill.getX() + 10 * s, statusPill.getCentreY() - 3.5f * s, 7 * s, 7 * s);
+    if(ledOn) glow(g, juce::Rectangle<float>(12 * s, 12 * s).withCentre({statusPill.getX() + 13.5f * s, statusPill.getCentreY()}), look::mint.withAlpha(0.4f));
 
-    drawText(g, status, {statusPill.getX() + 18 * s, statusPill.getY(), statusPill.getWidth() - 22 * s, statusPill.getHeight()}, 11 * s, look::paper, juce::Justification::centred, false);
+    drawText(g, status, {statusPill.getX() + 20 * s, statusPill.getY(), statusPill.getWidth() - 26 * s, statusPill.getHeight()}, 12.5f * s, look::paper, juce::Justification::centred, false);
 
     // DJ Duck Booth Stage
     paintDuckBooth(g, {22 * s, 54 * s + dy, 310 * s, 182 * s}, s);

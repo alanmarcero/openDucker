@@ -11,7 +11,7 @@ const juce::Colour background {0xff0d1317}, panel {0xff152026}, panelHover {0xff
 // Bar text height as a share of the bar height, and the text inset at each end.
 constexpr float barTextScale = 0.37f, barPadding = 9.0f;
 // A control whose setting has no effect in the current state draws at this alpha.
-constexpr float inactiveAlpha = 0.45f;
+constexpr float inactiveAlpha = 0.58f;
 }
 
 inline void bindParamLock(juce::Component& control, const char* paramId) {
@@ -111,11 +111,11 @@ private:
     EffectsPanel effectsPanel;
     suite::SuiteBar suiteBar;
     juce::TextButton effectsToggle;
-    juce::TextButton pushItButton {"Audition"};
+    juce::TextButton pushItButton {"Test Impact"};
     bool effectsExpanded = true;
     LockableControl<juce::Slider> mix, band, shift, slope, threshold, lookahead, smoothing, detectorHpf, detectorLpf, tension, floor;
     LockableControl<juce::ComboBox> bandSlope;
-    LockableControl<juce::TextButton> detectorMonitorButton {"Listen"};
+    LockableControl<juce::TextButton> detectorMonitorButton {"Listen Detector"};
     std::array<LockableControl<juce::TextButton>, 4> rateButtons;
     std::array<LockableControl<juce::TextButton>, 3> triggerButtons;
     LockableControl<juce::TextButton> bandButton;
