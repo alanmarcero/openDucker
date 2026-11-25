@@ -1,3 +1,8 @@
+# openDucker 2.8.3
+
+- **Editor polish:** Refines lock controls, curve display, preset browsing, and the shared suite layout.
+- **Build and licensing:** Aligns JUCE 8 licensing and hardens the CI workflow.
+
 # openDucker 2.8.0
 
 - **Smooth Ballistics & Curves:** Eliminated C0 derivative corners in ducking curves and refined attack/recovery ballistics with click-free legato retriggering.
