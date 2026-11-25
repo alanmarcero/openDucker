@@ -48,4 +48,4 @@ Rescan plugins in your DAW after installation. The macOS bundle is not notarized
 
 ## License
 
-openDucker is released under the MIT license. See [LICENSE](LICENSE). Third-party components, including JUCE, keep their own licenses; see [third-party notices](THIRD_PARTY.md). This project is not affiliated with or endorsed by Cableguys. Kickstart, Nicky Romero, and Cableguys are trademarks of their respective owners.
+openDucker is released under AGPL-3.0. See [LICENSE](LICENSE). Third-party components, including JUCE, keep their own licenses; see [third-party notices](THIRD_PARTY.md). This project is not affiliated with or endorsed by Cableguys. Kickstart, Nicky Romero, and Cableguys are trademarks of their respective owners.
