@@ -202,6 +202,7 @@ bool DuckerProcessor::isBusesLayoutSupported(const BusesLayout& buses) const {
 
 template<typename Sample> void DuckerProcessor::process(juce::AudioBuffer<Sample>& buffer, juce::MidiBuffer& midi, bool bypassed) {
     juce::ScopedNoDenormals noDenormals;
+    if (buffer.getNumChannels() <= 0 || buffer.getNumSamples() <= 0) return;
     duck::Transport t;
     auto* playHead = getPlayHead();
     const auto position = playHead ? playHead->getPosition() : juce::Optional<juce::AudioPlayHead::PositionInfo>{};
@@ -257,8 +258,13 @@ template<typename Sample> void DuckerProcessor::process(juce::AudioBuffer<Sample
         lookaheadPosition = 0;
     }
 
-    auto main = getBusBuffer(buffer, true, 0);
-    const bool hasSidechain = getBusCount(true) > 1 && getBus(true, 1)->isEnabled();
+    const int totalInputChannels = getTotalNumInputChannels();
+    if (totalInputChannels <= 0) return;
+    auto main = buffer.getNumChannels() >= getChannelCountOfBus(true, 0)
+        ? getBusBuffer(buffer, true, 0)
+        : juce::AudioBuffer<Sample>(buffer.getArrayOfWritePointers(), std::min(2, buffer.getNumChannels()), buffer.getNumSamples());
+    const bool hasSidechain = getBusCount(true) > 1 && getBus(true, 1)->isEnabled()
+        && buffer.getNumChannels() >= totalInputChannels;
     auto sidechain = hasSidechain ? getBusBuffer(buffer, true, 1) : juce::AudioBuffer<Sample>();
     sourceIsSidechain.store(hasSidechain, std::memory_order_relaxed);
     const int rateIndex = juce::jlimit(0, 3, static_cast<int>(value(Rate)));
@@ -279,6 +285,7 @@ template<typename Sample> void DuckerProcessor::process(juce::AudioBuffer<Sample
         sourceBins[static_cast<size_t>(sourceLastBin)].store(sourceHold, std::memory_order_relaxed);
     };
     const int channels = main.getNumChannels(), samples = main.getNumSamples();
+    if (channels <= 0 || samples <= 0) return;
     const bool stereo = channels > 1;
     const double detectorHpf = value(DetectorHpf), detectorLpf = value(DetectorLpf);
     for(auto& filter : detectorFilters) filter.setCutoffs(detectorHpf, detectorLpf);

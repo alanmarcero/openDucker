@@ -1232,6 +1232,11 @@ int main(int argc, char** argv) {
             require(identified != nullptr && std::abs(restored.parameters.getParameter(identified->paramID)->getValue() - parameter->getValue()) < 1e-6f, "Session recall misses a parameter");
         }
         p.setPlayHead(nullptr);
+        {
+            juce::AudioBuffer<float> zeroChannel(0, 64);
+            juce::MidiBuffer zeroMidi;
+            p.processBlock(zeroChannel, zeroMidi);
+        }
         std::cout << "PASS float/double sync, mix, bypass, MIDI and audio triggers, sidechain layout, band split and solo, FX routing/matrix/reset, all native controls, session recall and screenshots\n";
     } catch(const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }
