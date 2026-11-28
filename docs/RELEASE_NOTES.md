@@ -1,3 +1,7 @@
+# openDucker 2.8.4
+
+- **Buffer safety:** Guards `DuckerProcessor::process` against 0-channel and mismatched bus buffers before reading samples.
+
 # openDucker 2.8.3
 
 - **Editor polish:** Refines lock controls, curve display, preset browsing, and the shared suite layout.

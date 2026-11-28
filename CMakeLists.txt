@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(openDucker VERSION 2.8.3 LANGUAGES C CXX)
+project(openDucker VERSION 2.8.4 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 if(MSVC)
